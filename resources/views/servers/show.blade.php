@@ -6,7 +6,15 @@
 
 @php
     $latest = $server->checks->first();
-    $services = $latest && $latest->services ? json_decode($latest->services, true) : [];
+
+    if ($latest && is_array($latest->services)) {
+        $services = $latest->services;
+    } elseif ($latest && is_string($latest->services)) {
+        $services = json_decode($latest->services, true) ?: [];
+    } else {
+        $services = [];
+    }
+
     $securityAlerts = $server->securityAlerts()->latest()->limit(20)->get();
 
     $cpu = $latest->cpu_usage ?? 0;
