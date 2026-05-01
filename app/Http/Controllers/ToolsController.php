@@ -27,11 +27,14 @@ class ToolsController extends Controller
 
     public function logs()
     {
-        $checks = ServerCheck::with('server')
-            ->latest()
-            ->limit(200)
-            ->get();
-
-        return view('tools.logs', compact('checks'));
+        return view('tools.logs', [
+            'servers' => \App\Models\Server::latest()->get(),
+            'logs' => [],
+            'securityCount' => 0,
+            'cpanelCount' => 0,
+            'emailCount' => 0,
+            'appCount' => 0,
+        ]);
     }
+
 }

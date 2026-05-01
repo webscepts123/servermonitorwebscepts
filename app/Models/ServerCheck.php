@@ -23,4 +23,19 @@ class ServerCheck extends Model
         'security_alerts',
         'checked_at',
     ];
+
+    protected $casts = [
+        'online' => 'boolean',
+        'ssh_online' => 'boolean',
+        'cpanel_online' => 'boolean',
+        'plesk_online' => 'boolean',
+        'website_online' => 'boolean',
+        'services' => 'array',
+        'checked_at' => 'datetime',
+    ];
+
+    public function server()
+    {
+        return $this->belongsTo(Server::class);
+    }
 }

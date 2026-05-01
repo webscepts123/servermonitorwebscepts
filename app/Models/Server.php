@@ -30,9 +30,11 @@ class Server extends Model
     ];
 
     public function checks()
-    {
-        return $this->hasMany(ServerCheck::class);
-    }
+{
+    return $this->hasMany(ServerCheck::class);
+}
+
+
 
     public function latestCheck()
     {

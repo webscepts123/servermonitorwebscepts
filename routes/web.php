@@ -121,6 +121,60 @@ Route::post('/backups/settings', [BackupController::class, 'saveSettings'])
 |--------------------------------------------------------------------------
 */
 
+/*
+|--------------------------------------------------------------------------
+| SECURITY ROUTES (ADVANCED)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('security')->name('security.')->group(function () {
+
+    // Pages
+    Route::get('/alerts', [App\Http\Controllers\SecurityController::class, 'alerts'])->name('alerts');
+    Route::get('/firewall', [App\Http\Controllers\SecurityController::class, 'firewall'])->name('firewall');
+    Route::get('/abuse', [App\Http\Controllers\SecurityController::class, 'abuse'])->name('abuse');
+    Route::get('/email', [App\Http\Controllers\SecurityController::class, 'email'])->name('email');
+    Route::get('/ssh', [App\Http\Controllers\SecurityController::class, 'ssh'])->name('ssh');
+
+    // 🔥 FIREWALL ACTIONS
+    Route::post('/block-ip', [App\Http\Controllers\SecurityController::class, 'blockIp'])
+        ->name('block.ip');
+
+    Route::post('/unblock-ip', [App\Http\Controllers\SecurityController::class, 'unblockIp'])
+        ->name('unblock.ip');
+
+    Route::post('/restart-firewall', [App\Http\Controllers\SecurityController::class, 'restartFirewall'])
+        ->name('firewall.restart');
+
+    // 🔐 SSH SECURITY
+    Route::post('/ssh/kill-session', [App\Http\Controllers\SecurityController::class, 'killSession'])
+        ->name('ssh.kill');
+
+    Route::post('/ssh/block-ip', [App\Http\Controllers\SecurityController::class, 'sshBlockIp'])
+        ->name('ssh.block');
+
+    // 📧 EMAIL SECURITY
+    Route::post('/email/clear-queue', [App\Http\Controllers\SecurityController::class, 'clearQueue'])
+        ->name('email.clear');
+
+    Route::post('/email/block-sender', [App\Http\Controllers\SecurityController::class, 'blockSender'])
+        ->name('email.block');
+
+    // 🚨 ABUSE / MALWARE
+    Route::post('/scan-malware', [App\Http\Controllers\SecurityController::class, 'scanMalware'])
+        ->name('malware.scan');
+
+    Route::post('/kill-process', [App\Http\Controllers\SecurityController::class, 'killProcess'])
+        ->name('process.kill');
+
+    // 📊 REAL-TIME / AI / LOGS
+    Route::get('/logs/live', [App\Http\Controllers\SecurityController::class, 'liveLogs'])
+        ->name('logs.live');
+
+    Route::post('/ai-detect', [App\Http\Controllers\SecurityController::class, 'aiDetect'])
+        ->name('ai.detect');
+
+});
+
 Route::prefix('monitoring')->group(function () {
 
     Route::get('/uptime', [App\Http\Controllers\MonitoringController::class, 'uptime'])
