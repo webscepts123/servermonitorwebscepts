@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('host'); // IP or domain
             $table->integer('ssh_port')->default(22);
             $table->string('username')->default('root');
+            $table->text('password')->nullable();
             $table->text('private_key')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
