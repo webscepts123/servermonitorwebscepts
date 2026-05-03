@@ -12,6 +12,7 @@ use App\Http\Controllers\SmsController;
 use App\Http\Controllers\PanelAccountPageController;
 use App\Http\Controllers\LiteSpeedController;
 use App\Http\Controllers\DomainController;
+use App\Http\Controllers\TechnologyController;
 
 /*
 |--------------------------------------------------------------------------
@@ -441,6 +442,25 @@ Route::middleware(['auth'])->group(function () {
 
         Route::post('/records/delete', [DomainController::class, 'deleteRecord'])
             ->name('records.delete');
+    });
+
+    Route::prefix('technology')
+    ->name('technology.')
+    ->middleware(['throttle:30,1'])
+    ->group(function () {
+        Route::get('/', [TechnologyController::class, 'index'])->name('index');
+
+        Route::post('/encrypt-text', [TechnologyController::class, 'encryptText'])
+            ->name('encrypt.text');
+
+        Route::post('/decrypt-text', [TechnologyController::class, 'decryptText'])
+            ->name('decrypt.text');
+
+        Route::post('/encrypt-file', [TechnologyController::class, 'encryptFile'])
+            ->name('encrypt.file');
+
+        Route::post('/rotate-server-passwords', [TechnologyController::class, 'rotateServerPasswords'])
+            ->name('rotate.passwords');
     });
 
     /*

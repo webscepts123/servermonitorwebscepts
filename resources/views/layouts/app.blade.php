@@ -250,6 +250,10 @@
                         ['SSH Attempts', 'security.ssh', 'fa-key', ['security.ssh']],
                     ],
 
+                    'Technology' => [
+                        ['SentinelCore', 'technology.index', 'fa-shield-virus', ['technology.*']],
+                    ],
+
                     'Backup' => [
                         ['Backup Dashboard', 'backups.index', 'fa-cloud-arrow-up', ['backups.index']],
                         ['Google Drive', 'backups.google', 'fa-folder-open', ['backups.google']],
