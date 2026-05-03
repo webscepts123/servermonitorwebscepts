@@ -121,3 +121,20 @@ Schedule::call(function () {
     ->dailyAt('04:30')
     ->name('cleanup-old-monitoring-logs')
     ->withoutOverlapping();
+
+
+    /*
+|--------------------------------------------------------------------------
+| Auto Backup + DNS Failover
+|--------------------------------------------------------------------------
+| Checks disk usage. If disk reaches transfer percentage:
+| - transfers backup to assigned backup server
+| - syncs Google Drive if enabled
+| - changes ClouDNS A records to backup server IP if DNS failover is enabled
+|--------------------------------------------------------------------------
+*/
+Schedule::command('servers:auto-backup-failover')
+->everyTenMinutes()
+->withoutOverlapping(30)
+->runInBackground()
+->appendOutputTo(storage_path('logs/auto-backup-failover.log'));

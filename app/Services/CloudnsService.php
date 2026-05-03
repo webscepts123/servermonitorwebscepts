@@ -20,7 +20,7 @@ class CloudnsService
     private function request(string $path, array $params = []): array
     {
         if (empty($this->authId) || empty($this->authPassword)) {
-            throw new \Exception('ClouDNS API credentials are missing. Check CLOUDNS_AUTH_ID and CLOUDNS_AUTH_PASSWORD in .env.');
+            throw new \Exception('ClouDNS API credentials are missing.');
         }
 
         $query = array_merge([
@@ -39,7 +39,7 @@ class CloudnsService
         $data = $response->json();
 
         if (!is_array($data)) {
-            throw new \Exception('Invalid ClouDNS response: ' . $response->body());
+            throw new \Exception('Invalid ClouDNS response.');
         }
 
         if (isset($data['status']) && strtolower((string) $data['status']) === 'failed') {
@@ -70,7 +70,7 @@ class CloudnsService
         ]);
     }
 
-    public function addRecord(string $domain, string $type, string $host, string $record, int $ttl = 3600): array
+    public function addRecord(string $domain, string $type, string $host, string $record, int $ttl = 300): array
     {
         return $this->request('/dns/add-record', [
             'domain-name' => $domain,
@@ -81,7 +81,7 @@ class CloudnsService
         ]);
     }
 
-    public function updateRecord(string $domain, string $recordId, string $type, string $host, string $record, int $ttl = 3600): array
+    public function updateRecord(string $domain, string $recordId, string $type, string $host, string $record, int $ttl = 300): array
     {
         return $this->request('/dns/mod-record', [
             'domain-name' => $domain,
@@ -107,5 +107,56 @@ class CloudnsService
             'domain-name' => $domain,
             'zone-type' => $zoneType,
         ]);
+    }
+
+    public function updateARecordsToIp(string $domain, string $newIp): array
+    {
+        $records = $this->records($domain);
+
+        $updated = [];
+        $hasRootA = false;
+
+        foreach ($records as $record) {
+            $recordId = $record['id'] ?? $record['record-id'] ?? null;
+            $type = strtoupper($record['type'] ?? $record['record-type'] ?? '');
+            $host = $record['host'] ?? $record['name'] ?? '';
+            $ttl = (int) ($record['ttl'] ?? 300);
+
+            if (!$recordId || $type !== 'A') {
+                continue;
+            }
+
+            $cleanHost = trim((string) $host);
+
+            if ($cleanHost === '' || $cleanHost === '@') {
+                $hasRootA = true;
+
+                $updated[] = $this->updateRecord(
+                    domain: $domain,
+                    recordId: (string) $recordId,
+                    type: 'A',
+                    host: '',
+                    record: $newIp,
+                    ttl: $ttl ?: 300
+                );
+            }
+
+            if ($cleanHost === 'www') {
+                $updated[] = $this->updateRecord(
+                    domain: $domain,
+                    recordId: (string) $recordId,
+                    type: 'A',
+                    host: 'www',
+                    record: $newIp,
+                    ttl: $ttl ?: 300
+                );
+            }
+        }
+
+        if (!$hasRootA) {
+            $updated[] = $this->addRecord($domain, 'A', '', $newIp, 300);
+        }
+
+        return $updated;
     }
 }

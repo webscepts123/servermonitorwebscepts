@@ -26,6 +26,10 @@ class Server extends Model
         'disk_transfer_percent',
         'google_drive_remote',
         'backup_path',
+        'backup_selected_accounts',
+        'failover_enabled',
+        'dns_failover_enabled',
+        'daily_sync_time',
         'google_drive_sync',
         'is_active',
         'website_url',
@@ -33,6 +37,13 @@ class Server extends Model
         'local_backup_path',
         'sync_time',
         'linked_domain',
+        'failover_enabled',
+        'dns_failover_enabled',
+        'last_failover_at',
+        'last_failover_reason',
+        'original_ip',
+        'active_dns_ip',
+        'backup_selected_accounts',
         'auto_transfer',
         'google_drive_sync',
         'email_alerts_enabled',
@@ -41,6 +52,15 @@ class Server extends Model
         'last_recovery_alert_sent_at',
         'last_known_status',
         'is_active',
+    ];
+    protected $casts = [
+        'is_active' => 'boolean',
+        'auto_transfer' => 'boolean',
+        'google_drive_sync' => 'boolean',
+        'failover_enabled' => 'boolean',
+        'dns_failover_enabled' => 'boolean',
+        'backup_selected_accounts' => 'array',
+        'last_failover_at' => 'datetime',
     ];
 
     protected $hidden = [
@@ -67,5 +87,10 @@ class Server extends Model
     public function securityAlerts()
     {
         return $this->hasMany(ServerSecurityAlert::class);
+    }
+
+    public function domains()
+    {
+        return $this->hasMany(\App\Models\ServerDomain::class);
     }
 }

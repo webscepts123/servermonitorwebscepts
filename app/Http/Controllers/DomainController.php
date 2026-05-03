@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Server;
+use App\Models\ServerDomain;
 use App\Services\CloudnsService;
 use Illuminate\Http\Request;
 
@@ -14,8 +15,7 @@ class DomainController extends Controller
         $zones = [];
         $apiConnected = false;
 
-        $servers = Server::latest()->get();
-
+        $servers = Server::with('domains')->latest()->get();
         try {
             $zones = $cloudns->listZones();
             $apiConnected = true;
@@ -53,23 +53,101 @@ class DomainController extends Controller
     {
         $data = $request->validate([
             'linked_domain' => 'required|string|max:255',
+            'is_primary' => 'nullable|boolean',
         ]);
 
-        $server->update([
-            'linked_domain' => $data['linked_domain'],
-            'website_url' => 'https://' . $data['linked_domain'],
-        ]);
+        $domain = strtolower(trim($data['linked_domain']));
 
-        return back()->with('success', 'Domain linked to server successfully.');
+        ServerDomain::updateOrCreate(
+            [
+                'server_id' => $server->id,
+                'domain' => $domain,
+            ],
+            [
+                'dns_provider' => 'cloudns',
+                'active_dns_ip' => $server->host,
+                'is_primary' => $request->has('is_primary'),
+            ]
+        );
+
+        if ($request->has('is_primary')) {
+            ServerDomain::where('server_id', $server->id)
+                ->where('domain', '!=', $domain)
+                ->update(['is_primary' => false]);
+
+            $server->update([
+                'linked_domain' => $domain,
+                'website_url' => 'https://' . $domain,
+            ]);
+        } elseif (empty($server->linked_domain)) {
+            $server->update([
+                'linked_domain' => $domain,
+                'website_url' => 'https://' . $domain,
+            ]);
+
+            ServerDomain::where('server_id', $server->id)
+                ->where('domain', $domain)
+                ->update(['is_primary' => true]);
+        }
+
+        return back()->with('success', $domain . ' linked to ' . $server->name . ' successfully.');
     }
 
-    public function unlinkServer(Server $server)
+    public function unlinkServer(Request $request, Server $server)
     {
-        $server->update([
-            'linked_domain' => null,
+        $data = $request->validate([
+            'domain' => 'required|string|max:255',
         ]);
 
-        return back()->with('success', 'Domain unlinked from server successfully.');
+        $domain = strtolower(trim($data['domain']));
+
+        ServerDomain::where('server_id', $server->id)
+            ->where('domain', $domain)
+            ->delete();
+
+        $nextPrimary = ServerDomain::where('server_id', $server->id)
+            ->latest()
+            ->first();
+
+        if ($server->linked_domain === $domain) {
+            if ($nextPrimary) {
+                $nextPrimary->update(['is_primary' => true]);
+
+                $server->update([
+                    'linked_domain' => $nextPrimary->domain,
+                    'website_url' => 'https://' . $nextPrimary->domain,
+                ]);
+            } else {
+                $server->update([
+                    'linked_domain' => null,
+                    'website_url' => null,
+                ]);
+            }
+        }
+
+        return back()->with('success', $domain . ' unlinked successfully.');
+    }
+
+    public function makePrimary(Server $server, ServerDomain $domain)
+    {
+        if ((int) $domain->server_id !== (int) $server->id) {
+            abort(404);
+        }
+
+        ServerDomain::where('server_id', $server->id)->update([
+            'is_primary' => false,
+        ]);
+
+        $domain->update([
+            'is_primary' => true,
+        ]);
+
+        $server->update([
+            'linked_domain' => $domain->domain,
+            'website_url' => 'https://' . $domain->domain,
+        ]);
+
+        return back()->with('success', $domain->domain . ' set as primary domain.');
     }
 
     public function createZone(Request $request, CloudnsService $cloudns)

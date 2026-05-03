@@ -427,6 +427,9 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/servers/{server}/unlink', [DomainController::class, 'unlinkServer'])
             ->name('servers.unlink');
 
+        Route::post('/servers/{server}/domains/{domain}/primary', [DomainController::class, 'makePrimary'])
+            ->name('servers.domains.primary');
+
         Route::post('/zone/create', [DomainController::class, 'createZone'])
             ->name('zone.create');
 
