@@ -251,7 +251,8 @@
                     ],
 
                     'Technology' => [
-                        ['SentinelCore', 'technology.index', 'fa-shield-virus', ['technology.*']],
+                        ['SentinelCore', 'technology.index', 'fa-shield-virus', ['technology.index']],
+                        ['Web Scanner', 'technology.webscanner.index', 'fa-magnifying-glass-chart', ['technology.webscanner.*']],
                     ],
 
                     'Backup' => [

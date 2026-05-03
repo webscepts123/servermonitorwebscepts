@@ -13,6 +13,7 @@ use App\Http\Controllers\PanelAccountPageController;
 use App\Http\Controllers\LiteSpeedController;
 use App\Http\Controllers\DomainController;
 use App\Http\Controllers\TechnologyController;
+use App\Http\Controllers\SentinelWebScanController;
 
 /*
 |--------------------------------------------------------------------------
@@ -264,6 +265,26 @@ Route::middleware(['auth'])->group(function () {
 
             Route::post('/server/{server}/recovery', [SmsController::class, 'sendRecoveryAlert'])
                 ->name('recovery');
+        });
+
+        Route::prefix('technology/web-scanner')
+        ->name('technology.webscanner.')
+        ->middleware(['throttle:20,1'])
+        ->group(function () {
+            Route::get('/', [SentinelWebScanController::class, 'index'])
+                ->name('index');
+    
+            Route::post('/scan', [SentinelWebScanController::class, 'scan'])
+                ->name('scan');
+    
+            Route::get('/{scan}', [SentinelWebScanController::class, 'show'])
+                ->name('show');
+    
+            Route::post('/{scan}/rescan', [SentinelWebScanController::class, 'rescan'])
+                ->name('rescan');
+    
+            Route::delete('/{scan}', [SentinelWebScanController::class, 'destroy'])
+                ->name('destroy');
         });
 
     /*
