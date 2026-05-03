@@ -18,8 +18,11 @@ use App\Http\Controllers\LiteSpeedController;
 |--------------------------------------------------------------------------
 */
 
-Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
+Route::get('/login', [AuthController::class, 'showLogin'])
+    ->name('login');
+
+Route::post('/login', [AuthController::class, 'login'])
+    ->name('login.submit');
 
 /*
 |--------------------------------------------------------------------------
@@ -38,6 +41,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])
         ->name('dashboard.index');
 
+    Route::get('/dashboard', [DashboardController::class, 'index'])
+        ->name('dashboard');
+
     /*
     |--------------------------------------------------------------------------
     | Panel Account Landing Pages
@@ -55,7 +61,7 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Server Routes
+    | Servers
     |--------------------------------------------------------------------------
     */
 
@@ -75,7 +81,7 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | LiteSpeed Routes
+    | LiteSpeed Manager
     |--------------------------------------------------------------------------
     */
 
@@ -83,38 +89,66 @@ Route::middleware(['auth'])->group(function () {
         ->name('servers.litespeed.')
         ->middleware(['throttle:20,1'])
         ->group(function () {
-            Route::get('/', [LiteSpeedController::class, 'index'])->name('index');
 
-            Route::post('/activate', [LiteSpeedController::class, 'activate'])->name('activate');
-            Route::post('/restart', [LiteSpeedController::class, 'restart'])->name('restart');
-            Route::post('/stop', [LiteSpeedController::class, 'stop'])->name('stop');
-            Route::post('/reload', [LiteSpeedController::class, 'reload'])->name('reload');
+            Route::get('/', [LiteSpeedController::class, 'index'])
+                ->name('index');
 
-            Route::post('/config-test', [LiteSpeedController::class, 'configTest'])->name('configTest');
-            Route::post('/logs', [LiteSpeedController::class, 'logs'])->name('logs');
+            Route::post('/activate', [LiteSpeedController::class, 'activate'])
+                ->name('activate');
+
+            Route::post('/restart', [LiteSpeedController::class, 'restart'])
+                ->name('restart');
+
+            Route::post('/stop', [LiteSpeedController::class, 'stop'])
+                ->name('stop');
+
+            Route::post('/reload', [LiteSpeedController::class, 'reload'])
+                ->name('reload');
+
+            Route::post('/config-test', [LiteSpeedController::class, 'configTest'])
+                ->name('configTest');
+
+            Route::post('/logs', [LiteSpeedController::class, 'logs'])
+                ->name('logs');
         });
 
     /*
     |--------------------------------------------------------------------------
-    | cPanel Account Routes
+    | cPanel / WHM Account Routes
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('servers/{server}/cpanel-accounts')
         ->name('servers.cpanel.')
-        ->middleware(['throttle:20,1'])
+        ->middleware(['throttle:30,1'])
         ->group(function () {
-            Route::get('/', [CpanelAccountController::class, 'index'])->name('index');
-            Route::get('/create', [CpanelAccountController::class, 'create'])->name('create');
-            Route::post('/store', [CpanelAccountController::class, 'store'])->name('store');
 
-            Route::get('/{user}/edit', [CpanelAccountController::class, 'edit'])->name('edit');
-            Route::post('/{user}/password', [CpanelAccountController::class, 'updatePassword'])->name('password');
-            Route::post('/{user}/package', [CpanelAccountController::class, 'updatePackage'])->name('package');
-            Route::post('/{user}/ip', [CpanelAccountController::class, 'updateIp'])->name('ip');
+            Route::get('/', [CpanelAccountController::class, 'index'])
+                ->name('index');
 
-            Route::post('/{user}/sms', [CpanelAccountController::class, 'sendAccountSms'])->name('sms');
-            Route::post('/{user}/email', [CpanelAccountController::class, 'sendAccountEmail'])->name('email');
+            Route::get('/create', [CpanelAccountController::class, 'create'])
+                ->name('create');
+
+            Route::post('/store', [CpanelAccountController::class, 'store'])
+                ->name('store');
+
+            Route::get('/{user}/edit', [CpanelAccountController::class, 'edit'])
+                ->name('edit');
+
+            Route::post('/{user}/password', [CpanelAccountController::class, 'updatePassword'])
+                ->name('password');
+
+            Route::post('/{user}/package', [CpanelAccountController::class, 'updatePackage'])
+                ->name('package');
+
+            Route::post('/{user}/ip', [CpanelAccountController::class, 'updateIp'])
+                ->name('ip');
+
+            Route::post('/{user}/sms', [CpanelAccountController::class, 'sendAccountSms'])
+                ->name('sms');
+
+            Route::post('/{user}/email', [CpanelAccountController::class, 'sendAccountEmail'])
+                ->name('email');
 
             /*
             |--------------------------------------------------------------------------
@@ -122,10 +156,17 @@ Route::middleware(['auth'])->group(function () {
             |--------------------------------------------------------------------------
             */
 
-            Route::get('/{user}/login', [CpanelAccountController::class, 'autoLogin'])->name('login');
-            Route::get('/{user}/login/email', [CpanelAccountController::class, 'autoLoginEmail'])->name('login.email');
-            Route::get('/{user}/login/files', [CpanelAccountController::class, 'autoLoginFiles'])->name('login.files');
-            Route::get('/{user}/login/wordpress', [CpanelAccountController::class, 'autoLoginWordPress'])->name('login.wordpress');
+            Route::get('/{user}/login', [CpanelAccountController::class, 'autoLogin'])
+                ->name('login');
+
+            Route::get('/{user}/login/email', [CpanelAccountController::class, 'autoLoginEmail'])
+                ->name('login.email');
+
+            Route::get('/{user}/login/files', [CpanelAccountController::class, 'autoLoginFiles'])
+                ->name('login.files');
+
+            Route::get('/{user}/login/wordpress', [CpanelAccountController::class, 'autoLoginWordPress'])
+                ->name('login.wordpress');
         });
 
     /*
@@ -138,7 +179,9 @@ Route::middleware(['auth'])->group(function () {
         ->name('servers.wordpress.')
         ->middleware(['throttle:20,1'])
         ->group(function () {
-            Route::get('/', [WordPressManagerController::class, 'show'])->name('show');
+
+            Route::get('/', [WordPressManagerController::class, 'show'])
+                ->name('show');
 
             Route::post('/core-update', [WordPressManagerController::class, 'updateCore'])
                 ->name('coreUpdate');
@@ -161,14 +204,16 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Backup Routes
+    | Backups
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('backups')
         ->name('backups.')
         ->group(function () {
-            Route::get('/', [BackupController::class, 'index'])->name('index');
+
+            Route::get('/', [BackupController::class, 'index'])
+                ->name('index');
 
             Route::post('/settings', [BackupController::class, 'saveSettings'])
                 ->name('settings');
@@ -197,14 +242,15 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | SMS Routes
+    | SMS Alert Routes
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('sms')
         ->name('sms.')
-        ->middleware(['throttle:10,1'])
+        ->middleware(['throttle:20,1'])
         ->group(function () {
+
             Route::post('/send', [SmsController::class, 'send'])
                 ->name('send');
 
@@ -217,13 +263,14 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Monitoring Routes
+    | Monitoring Pages
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('monitoring')
         ->name('monitoring.')
         ->group(function () {
+
             Route::get('/uptime', [App\Http\Controllers\MonitoringController::class, 'uptime'])
                 ->name('uptime');
 
@@ -239,16 +286,17 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Security Routes
+    | Security Pages + Actions
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('security')
         ->name('security.')
         ->group(function () {
+
             /*
             |--------------------------------------------------------------------------
-            | Pages
+            | Security Pages
             |--------------------------------------------------------------------------
             */
 
@@ -284,7 +332,7 @@ Route::middleware(['auth'])->group(function () {
 
             /*
             |--------------------------------------------------------------------------
-            | SSH Security
+            | SSH Security Actions
             |--------------------------------------------------------------------------
             */
 
@@ -296,7 +344,7 @@ Route::middleware(['auth'])->group(function () {
 
             /*
             |--------------------------------------------------------------------------
-            | Email Security
+            | Email Security Actions
             |--------------------------------------------------------------------------
             */
 
@@ -308,7 +356,7 @@ Route::middleware(['auth'])->group(function () {
 
             /*
             |--------------------------------------------------------------------------
-            | Abuse / Malware
+            | Malware / Abuse Actions
             |--------------------------------------------------------------------------
             */
 
@@ -320,7 +368,7 @@ Route::middleware(['auth'])->group(function () {
 
             /*
             |--------------------------------------------------------------------------
-            | Real-time / AI / Logs
+            | Live Logs / AI
             |--------------------------------------------------------------------------
             */
 
@@ -333,13 +381,14 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Tools Routes
+    | Tools
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('tools')
         ->name('tools.')
         ->group(function () {
+
             Route::get('/terminal', [App\Http\Controllers\ToolsController::class, 'terminalList'])
                 ->name('terminal');
 
@@ -358,13 +407,14 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | CloudDNS / Domains
+    | Cloud DNS / Domains
     |--------------------------------------------------------------------------
     */
 
     Route::prefix('domains')
         ->name('domains.')
         ->group(function () {
+
             Route::get('/', [App\Http\Controllers\DomainController::class, 'index'])
                 ->name('index');
         });
