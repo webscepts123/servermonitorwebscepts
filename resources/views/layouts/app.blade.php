@@ -191,10 +191,10 @@
                     ],
 
                     'Panel Accounts' => [
-                        ['cPanel / WHM', 'servers.index', 'fa-cpanel', ['servers.cpanel.*']],
-                        ['Plesk Accounts', 'servers.index', 'fa-layer-group', ['servers.plesk.*']],
-                        ['WordPress', 'servers.index', 'fa-wordpress', ['servers.wordpress.*']],
-                    ],
+                            ['cPanel / WHM', 'panel.cpanel', 'fa-cpanel', ['panel.cpanel']],
+                            ['Plesk Accounts', 'panel.plesk', 'fa-layer-group', ['panel.plesk']],
+                            ['WordPress', 'panel.wordpress', 'fa-wordpress', ['panel.wordpress']],
+                        ],
 
                     'Monitoring' => [
                         ['Uptime Status', 'monitoring.uptime', 'fa-heart-pulse', ['monitoring.uptime']],

@@ -8,6 +8,8 @@ use App\Http\Controllers\CpanelAccountController;
 use App\Http\Controllers\WordPressManagerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\SmsController;
+use App\Http\Controllers\PanelAccountPageController;
+
 
 
 /*
@@ -37,6 +39,15 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/', [DashboardController::class, 'index'])
     ->name('dashboard.index');
+
+    Route::get('/panel/cpanel', [PanelAccountPageController::class, 'cpanel'])
+    ->name('panel.cpanel');
+
+Route::get('/panel/plesk', [PanelAccountPageController::class, 'plesk'])
+    ->name('panel.plesk');
+
+Route::get('/panel/wordpress', [PanelAccountPageController::class, 'wordpress'])
+    ->name('panel.wordpress');
 
 
     /*
