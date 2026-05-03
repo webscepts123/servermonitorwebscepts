@@ -21,12 +21,15 @@ class Server extends Model
         'email_alerts_enabled',
         'sms_alerts_enabled',
         'backup_server_id',
+        'panel_type',
         'disk_warning_percent',
         'disk_transfer_percent',
         'google_drive_remote',
         'backup_path',
         'google_drive_sync',
         'is_active',
+        'website_url',
+        'status',
         'local_backup_path',
         'sync_time',
         'auto_transfer',
@@ -36,6 +39,7 @@ class Server extends Model
         'last_down_alert_sent_at',
         'last_recovery_alert_sent_at',
         'last_known_status',
+        'is_active',
     ];
 
     protected $hidden = [
