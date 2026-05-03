@@ -38,6 +38,7 @@
 
     $adminEmail = $server->admin_email ?? null;
     $adminPhone = $server->admin_phone ?? null;
+
     $customerName = $server->customer_name ?? null;
     $customerEmail = $server->customer_email ?? null;
     $customerPhone = $server->customer_phone ?? null;
@@ -47,11 +48,34 @@
         $services['lshttpd'] ??
         $services['openlitespeed'] ??
         $services['litespeed'] ??
+        $services['lswsctrl'] ??
         null;
 
     $litespeedActive = strtolower(trim($litespeedStatus ?? '')) === 'active';
 
     $panelType = strtolower($server->panel_type ?? 'auto');
+
+    $lastChecked = $latest?->checked_at ?? $latest?->created_at ?? null;
+
+    $hiddenBaseFields = [
+        'name' => $server->name,
+        'host' => $server->host,
+        'website_url' => $server->website_url,
+        'panel_type' => $server->panel_type,
+        'ssh_port' => $server->ssh_port ?? 22,
+        'username' => $server->username,
+        'admin_email' => $server->admin_email,
+        'admin_phone' => $server->admin_phone,
+        'customer_name' => $server->customer_name,
+        'customer_email' => $server->customer_email,
+        'customer_phone' => $server->customer_phone,
+        'backup_server_id' => $server->backup_server_id,
+        'backup_path' => $server->backup_path,
+        'local_backup_path' => $server->local_backup_path,
+        'google_drive_remote' => $server->google_drive_remote,
+        'disk_warning_percent' => $server->disk_warning_percent ?? 80,
+        'disk_transfer_percent' => $server->disk_transfer_percent ?? 90,
+    ];
 @endphp
 
 <div class="space-y-6">
@@ -69,16 +93,27 @@
         </div>
     @endif
 
-    {{-- SERVER HEADER --}}
+    @if($errors->any())
+        <div class="bg-red-100 border border-red-300 text-red-800 rounded-2xl p-4 font-semibold">
+            <div class="font-black mb-2">Please fix these errors:</div>
+            <ul class="list-disc ml-5 text-sm">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    {{-- SERVER HERO --}}
     <div class="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 rounded-3xl shadow-xl p-7 text-white">
         <div class="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-blue-500/20 blur-3xl"></div>
         <div class="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-red-500/10 blur-3xl"></div>
 
-        <div class="relative flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+        <div class="relative flex flex-col xl:flex-row xl:items-start xl:justify-between gap-7">
 
-            <div>
-                <div class="flex flex-wrap items-center gap-3">
-                    <div class="w-16 h-16 rounded-3xl bg-white/10 border border-white/20 flex items-center justify-center">
+            <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-4">
+                    <div class="w-16 h-16 rounded-3xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
                         <i class="fa-solid fa-server text-3xl"></i>
                     </div>
 
@@ -93,17 +128,17 @@
                     </div>
 
                     @if($isOnline)
-                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400 text-green-100 font-bold">
+                        <span class="px-5 py-2 rounded-full bg-green-500/20 border border-green-400 text-green-100 font-black">
                             <i class="fa-solid fa-circle mr-1 text-xs"></i> Online
                         </span>
                     @else
-                        <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400 text-red-100 font-bold">
+                        <span class="px-5 py-2 rounded-full bg-red-500/20 border border-red-400 text-red-100 font-black">
                             <i class="fa-solid fa-circle mr-1 text-xs"></i> Offline
                         </span>
                     @endif
                 </div>
 
-                <p class="text-slate-400 text-sm mt-4">
+                <p class="text-slate-400 text-sm mt-5">
                     Website:
                     @if(!empty($server->website_url))
                         <a href="{{ $server->website_url }}" target="_blank" class="text-blue-300 hover:underline font-semibold">
@@ -114,7 +149,7 @@
                     @endif
                 </p>
 
-                <div class="mt-4 flex flex-wrap gap-2">
+                <div class="mt-5 flex flex-wrap gap-2">
                     <span class="px-4 py-2 rounded-full bg-blue-500/20 border border-blue-400/40 text-blue-100 text-xs font-bold">
                         Panel: {{ $panelType === 'cpanel' ? 'cPanel / WHM' : ($panelType === 'plesk' ? 'Plesk' : 'Auto Detect') }}
                     </span>
@@ -166,12 +201,12 @@
             </div>
 
             {{-- ACTION BUTTONS --}}
-            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 w-full xl:w-auto">
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 w-full xl:w-[560px]">
 
                 @if(Route::has('servers.checkNow'))
                     <form method="POST" action="{{ route('servers.checkNow', $server) }}" class="w-full">
                         @csrf
-                        <button class="w-full px-4 py-3 rounded-xl bg-green-600 text-white hover:bg-green-700 text-sm font-bold">
+                        <button class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-green-600 text-white hover:bg-green-700 text-sm font-black">
                             <i class="fa-solid fa-rotate mr-1"></i> Check Now
                         </button>
                     </form>
@@ -180,7 +215,7 @@
                 @if(Route::has('servers.securityScan'))
                     <form method="POST" action="{{ route('servers.securityScan', $server) }}" class="w-full">
                         @csrf
-                        <button class="w-full px-4 py-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 text-sm font-bold">
+                        <button class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 text-sm font-black">
                             <i class="fa-solid fa-shield-halved mr-1"></i> Security Scan
                         </button>
                     </form>
@@ -188,7 +223,7 @@
 
                 @if(Route::has('servers.litespeed.index'))
                     <a href="{{ route('servers.litespeed.index', $server) }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700 text-sm font-bold">
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700 text-sm font-black">
                         <i class="fa-solid fa-bolt mr-1"></i> LiteSpeed
                     </a>
                 @endif
@@ -197,7 +232,7 @@
                     <form method="POST" action="{{ route('servers.litespeed.activate', $server) }}" class="w-full">
                         @csrf
                         <button onclick="return confirm('Activate or restart LiteSpeed on this server?')"
-                                class="w-full px-4 py-3 rounded-xl bg-orange-600 text-white hover:bg-orange-700 text-sm font-bold">
+                                class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-orange-600 text-white hover:bg-orange-700 text-sm font-black">
                             <i class="fa-solid fa-bolt-lightning mr-1"></i> Activate LS
                         </button>
                     </form>
@@ -207,7 +242,7 @@
                     <form method="POST" action="{{ route('sms.down', $server) }}" class="w-full">
                         @csrf
                         <button onclick="return confirm('Send DOWN SMS alert to admin and customer?')"
-                                class="w-full px-4 py-3 rounded-xl bg-red-700 text-white hover:bg-red-800 text-sm font-bold">
+                                class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-red-700 text-white hover:bg-red-800 text-sm font-black">
                             <i class="fa-solid fa-message mr-1"></i> Down SMS
                         </button>
                     </form>
@@ -217,7 +252,7 @@
                     <form method="POST" action="{{ route('sms.recovery', $server) }}" class="w-full">
                         @csrf
                         <button onclick="return confirm('Send RECOVERY SMS alert to admin and customer?')"
-                                class="w-full px-4 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-bold">
+                                class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-black">
                             <i class="fa-solid fa-message mr-1"></i> Recovery SMS
                         </button>
                     </form>
@@ -225,28 +260,28 @@
 
                 @if(Route::has('servers.cpanel.index'))
                     <a href="{{ route('servers.cpanel.index', $server) }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold">
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-black">
                         <i class="fa-solid fa-users mr-1"></i> Accounts
                     </a>
                 @endif
 
                 @if(Route::has('servers.terminal'))
                     <a href="{{ route('servers.terminal', $server) }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 text-sm font-bold">
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-slate-800 text-white hover:bg-slate-700 text-sm font-black">
                         <i class="fa-solid fa-terminal mr-1"></i> Terminal
                     </a>
                 @endif
 
                 @if(Route::has('servers.edit'))
                     <a href="{{ route('servers.edit', $server) }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-cyan-600 text-white hover:bg-cyan-700 text-sm font-bold">
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-cyan-600 text-white hover:bg-cyan-700 text-sm font-black">
                         <i class="fa-solid fa-pen mr-1"></i> Edit
                     </a>
                 @endif
 
                 @if(Route::has('backups.index'))
                     <a href="{{ route('backups.index') }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-teal-600 text-white hover:bg-teal-700 text-sm font-bold">
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-teal-600 text-white hover:bg-teal-700 text-sm font-black">
                         <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Backup
                     </a>
                 @endif
@@ -327,17 +362,26 @@
             </div>
 
             <p class="text-xs text-slate-500 mt-3">
-                Last check: {{ $latest?->checked_at ?? 'No checks yet' }}
+                Last check: {{ $lastChecked ?? 'No checks yet' }}
             </p>
         </div>
 
     </div>
 
-    {{-- SERVER + CUSTOMER ALERT DETAILS --}}
+    {{-- SERVER + ALERT DETAILS WITH EDIT --}}
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
+        {{-- SERVER INFO --}}
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
-            <h3 class="text-xl font-black text-slate-800 mb-4">Server Info</h3>
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-black text-slate-800">Server Info</h3>
+
+                <button type="button"
+                        onclick="toggleBox('serverInfoEdit')"
+                        class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">
+                    <i class="fa-solid fa-pen mr-1"></i>Edit
+                </button>
+            </div>
 
             <div class="space-y-3 text-sm">
                 <div class="flex justify-between gap-4">
@@ -372,14 +416,138 @@
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">Last Checked</span>
                     <span class="font-bold text-slate-800">
-                        {{ $latest?->checked_at ?? $latest?->created_at?->diffForHumans() ?? 'No checks yet' }}
+                        {{ $lastChecked ?? 'No checks yet' }}
                     </span>
                 </div>
             </div>
+
+            <div id="serverInfoEdit" class="hidden mt-6 border-t pt-5">
+                <form method="POST" action="{{ route('servers.update', $server) }}" class="space-y-4">
+                    @csrf
+                    @method('PUT')
+
+                    <input type="hidden" name="admin_email" value="{{ $server->admin_email }}">
+                    <input type="hidden" name="admin_phone" value="{{ $server->admin_phone }}">
+                    <input type="hidden" name="customer_name" value="{{ $server->customer_name }}">
+                    <input type="hidden" name="customer_email" value="{{ $server->customer_email }}">
+                    <input type="hidden" name="customer_phone" value="{{ $server->customer_phone }}">
+                    <input type="hidden" name="backup_server_id" value="{{ $server->backup_server_id }}">
+                    <input type="hidden" name="backup_path" value="{{ $server->backup_path }}">
+                    <input type="hidden" name="local_backup_path" value="{{ $server->local_backup_path }}">
+                    <input type="hidden" name="google_drive_remote" value="{{ $server->google_drive_remote }}">
+                    <input type="hidden" name="disk_warning_percent" value="{{ $server->disk_warning_percent ?? 80 }}">
+                    <input type="hidden" name="disk_transfer_percent" value="{{ $server->disk_transfer_percent ?? 90 }}">
+
+                    @if($server->is_active)
+                        <input type="hidden" name="is_active" value="1">
+                    @endif
+
+                    @if($server->auto_transfer)
+                        <input type="hidden" name="auto_transfer" value="1">
+                    @endif
+
+                    @if($server->google_drive_sync)
+                        <input type="hidden" name="google_drive_sync" value="1">
+                    @endif
+
+                    @if($server->email_alerts_enabled)
+                        <input type="hidden" name="email_alerts_enabled" value="1">
+                    @endif
+
+                    @if($server->sms_alerts_enabled)
+                        <input type="hidden" name="sms_alerts_enabled" value="1">
+                    @endif
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Server Name</label>
+                        <input type="text"
+                               name="name"
+                               value="{{ old('name', $server->name) }}"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
+                               required>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Host / IP</label>
+                        <input type="text"
+                               name="host"
+                               value="{{ old('host', $server->host) }}"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
+                               required>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Website URL</label>
+                        <input type="url"
+                               name="website_url"
+                               value="{{ old('website_url', $server->website_url) }}"
+                               placeholder="https://example.com"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">SSH Port</label>
+                            <input type="number"
+                                   name="ssh_port"
+                                   value="{{ old('ssh_port', $server->ssh_port ?? 22) }}"
+                                   class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
+                                   required>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Panel Type</label>
+                            <select name="panel_type"
+                                    class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
+                                <option value="">Auto Detect</option>
+                                <option value="cpanel" {{ old('panel_type', $server->panel_type) === 'cpanel' ? 'selected' : '' }}>
+                                    cPanel / WHM
+                                </option>
+                                <option value="plesk" {{ old('panel_type', $server->panel_type) === 'plesk' ? 'selected' : '' }}>
+                                    Plesk
+                                </option>
+                                <option value="none" {{ old('panel_type', $server->panel_type) === 'none' ? 'selected' : '' }}>
+                                    No Panel
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Username</label>
+                        <input type="text"
+                               name="username"
+                               value="{{ old('username', $server->username) }}"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
+                               required>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Password</label>
+                        <input type="password"
+                               name="password"
+                               placeholder="Leave blank to keep current password"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+
+                    <button class="w-full px-5 py-3 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-700">
+                        Save Server Info
+                    </button>
+                </form>
+            </div>
         </div>
 
+        {{-- ADMIN ALERTS --}}
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
-            <h3 class="text-xl font-black text-slate-800 mb-4">Admin Alerts</h3>
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-black text-slate-800">Admin Alerts</h3>
+
+                <button type="button"
+                        onclick="toggleBox('adminAlertsEdit')"
+                        class="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700">
+                    <i class="fa-solid fa-pen mr-1"></i>Edit
+                </button>
+            </div>
 
             <div class="space-y-3 text-sm">
                 <div>
@@ -402,10 +570,96 @@
                     </span>
                 </div>
             </div>
+
+            <div id="adminAlertsEdit" class="hidden mt-6 border-t pt-5">
+                <form method="POST" action="{{ route('servers.update', $server) }}" class="space-y-4">
+                    @csrf
+                    @method('PUT')
+
+                    <input type="hidden" name="name" value="{{ $server->name }}">
+                    <input type="hidden" name="host" value="{{ $server->host }}">
+                    <input type="hidden" name="website_url" value="{{ $server->website_url }}">
+                    <input type="hidden" name="panel_type" value="{{ $server->panel_type }}">
+                    <input type="hidden" name="ssh_port" value="{{ $server->ssh_port ?? 22 }}">
+                    <input type="hidden" name="username" value="{{ $server->username }}">
+                    <input type="hidden" name="customer_name" value="{{ $server->customer_name }}">
+                    <input type="hidden" name="customer_email" value="{{ $server->customer_email }}">
+                    <input type="hidden" name="customer_phone" value="{{ $server->customer_phone }}">
+                    <input type="hidden" name="backup_server_id" value="{{ $server->backup_server_id }}">
+                    <input type="hidden" name="backup_path" value="{{ $server->backup_path }}">
+                    <input type="hidden" name="local_backup_path" value="{{ $server->local_backup_path }}">
+                    <input type="hidden" name="google_drive_remote" value="{{ $server->google_drive_remote }}">
+                    <input type="hidden" name="disk_warning_percent" value="{{ $server->disk_warning_percent ?? 80 }}">
+                    <input type="hidden" name="disk_transfer_percent" value="{{ $server->disk_transfer_percent ?? 90 }}">
+
+                    @if($server->is_active)
+                        <input type="hidden" name="is_active" value="1">
+                    @endif
+
+                    @if($server->auto_transfer)
+                        <input type="hidden" name="auto_transfer" value="1">
+                    @endif
+
+                    @if($server->google_drive_sync)
+                        <input type="hidden" name="google_drive_sync" value="1">
+                    @endif
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Admin Email</label>
+                        <input type="email"
+                               name="admin_email"
+                               value="{{ old('admin_email', $server->admin_email) }}"
+                               placeholder="admin@example.com"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-purple-500 outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Admin Phone</label>
+                        <input type="text"
+                               name="admin_phone"
+                               value="{{ old('admin_phone', $server->admin_phone) }}"
+                               placeholder="947XXXXXXXX"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-purple-500 outline-none">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label class="flex items-center gap-3 rounded-xl border p-4 cursor-pointer hover:bg-slate-50">
+                            <input type="checkbox"
+                                   name="email_alerts_enabled"
+                                   value="1"
+                                   class="w-5 h-5"
+                                   {{ old('email_alerts_enabled', $server->email_alerts_enabled) ? 'checked' : '' }}>
+                            <span class="font-bold text-slate-700">Email Alerts</span>
+                        </label>
+
+                        <label class="flex items-center gap-3 rounded-xl border p-4 cursor-pointer hover:bg-slate-50">
+                            <input type="checkbox"
+                                   name="sms_alerts_enabled"
+                                   value="1"
+                                   class="w-5 h-5"
+                                   {{ old('sms_alerts_enabled', $server->sms_alerts_enabled) ? 'checked' : '' }}>
+                            <span class="font-bold text-slate-700">SMS Alerts</span>
+                        </label>
+                    </div>
+
+                    <button class="w-full px-5 py-3 rounded-xl bg-purple-600 text-white font-black hover:bg-purple-700">
+                        Save Admin Alerts
+                    </button>
+                </form>
+            </div>
         </div>
 
+        {{-- CUSTOMER ALERTS --}}
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
-            <h3 class="text-xl font-black text-slate-800 mb-4">Customer Alerts</h3>
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-black text-slate-800">Customer Alerts</h3>
+
+                <button type="button"
+                        onclick="toggleBox('customerAlertsEdit')"
+                        class="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700">
+                    <i class="fa-solid fa-pen mr-1"></i>Edit
+                </button>
+            </div>
 
             <div class="space-y-3 text-sm">
                 <div>
@@ -422,6 +676,79 @@
                     <p class="text-slate-500">Customer Phone</p>
                     <p class="font-bold text-slate-800">{{ $customerPhone ?? 'Not set' }}</p>
                 </div>
+            </div>
+
+            <div id="customerAlertsEdit" class="hidden mt-6 border-t pt-5">
+                <form method="POST" action="{{ route('servers.update', $server) }}" class="space-y-4">
+                    @csrf
+                    @method('PUT')
+
+                    <input type="hidden" name="name" value="{{ $server->name }}">
+                    <input type="hidden" name="host" value="{{ $server->host }}">
+                    <input type="hidden" name="website_url" value="{{ $server->website_url }}">
+                    <input type="hidden" name="panel_type" value="{{ $server->panel_type }}">
+                    <input type="hidden" name="ssh_port" value="{{ $server->ssh_port ?? 22 }}">
+                    <input type="hidden" name="username" value="{{ $server->username }}">
+                    <input type="hidden" name="admin_email" value="{{ $server->admin_email }}">
+                    <input type="hidden" name="admin_phone" value="{{ $server->admin_phone }}">
+                    <input type="hidden" name="backup_server_id" value="{{ $server->backup_server_id }}">
+                    <input type="hidden" name="backup_path" value="{{ $server->backup_path }}">
+                    <input type="hidden" name="local_backup_path" value="{{ $server->local_backup_path }}">
+                    <input type="hidden" name="google_drive_remote" value="{{ $server->google_drive_remote }}">
+                    <input type="hidden" name="disk_warning_percent" value="{{ $server->disk_warning_percent ?? 80 }}">
+                    <input type="hidden" name="disk_transfer_percent" value="{{ $server->disk_transfer_percent ?? 90 }}">
+
+                    @if($server->is_active)
+                        <input type="hidden" name="is_active" value="1">
+                    @endif
+
+                    @if($server->auto_transfer)
+                        <input type="hidden" name="auto_transfer" value="1">
+                    @endif
+
+                    @if($server->google_drive_sync)
+                        <input type="hidden" name="google_drive_sync" value="1">
+                    @endif
+
+                    @if($server->email_alerts_enabled)
+                        <input type="hidden" name="email_alerts_enabled" value="1">
+                    @endif
+
+                    @if($server->sms_alerts_enabled)
+                        <input type="hidden" name="sms_alerts_enabled" value="1">
+                    @endif
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Customer Name</label>
+                        <input type="text"
+                               name="customer_name"
+                               value="{{ old('customer_name', $server->customer_name) }}"
+                               placeholder="Customer name"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500 outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Customer Email</label>
+                        <input type="email"
+                               name="customer_email"
+                               value="{{ old('customer_email', $server->customer_email) }}"
+                               placeholder="customer@example.com"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500 outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-1">Customer Phone</label>
+                        <input type="text"
+                               name="customer_phone"
+                               value="{{ old('customer_phone', $server->customer_phone) }}"
+                               placeholder="947XXXXXXXX"
+                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500 outline-none">
+                    </div>
+
+                    <button class="w-full px-5 py-3 rounded-xl bg-green-600 text-white font-black hover:bg-green-700">
+                        Save Customer Alerts
+                    </button>
+                </form>
             </div>
         </div>
 
@@ -460,7 +787,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
 
             <div class="rounded-2xl border p-4">
                 <p class="text-sm text-slate-500 font-semibold">LSWS</p>
@@ -487,6 +814,13 @@
                 <p class="text-sm text-slate-500 font-semibold">LiteSpeed</p>
                 <h4 class="text-xl font-black mt-1 {{ ($services['litespeed'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
                     {{ ucfirst($services['litespeed'] ?? 'unknown') }}
+                </h4>
+            </div>
+
+            <div class="rounded-2xl border p-4">
+                <p class="text-sm text-slate-500 font-semibold">LSWSCTRL</p>
+                <h4 class="text-xl font-black mt-1 {{ ($services['lswsctrl'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
+                    {{ ucfirst($services['lswsctrl'] ?? 'unknown') }}
                 </h4>
             </div>
 
@@ -837,12 +1171,14 @@
                             <td class="p-4">{{ $check->cpu_usage ?? '-' }}%</td>
                             <td class="p-4">{{ $check->ram_usage ?? '-' }}%</td>
                             <td class="p-4">{{ $check->disk_usage ?? '-' }}%</td>
+
                             <td class="p-4">
                                 {{ $check->response_time ?? 'N/A' }}
                                 @if(!empty($check->response_time))
                                     ms
                                 @endif
                             </td>
+
                             <td class="p-4 text-slate-600">{{ $check->status ?? '-' }}</td>
                         </tr>
                     @empty
@@ -858,5 +1194,17 @@
     </div>
 
 </div>
+
+<script>
+function toggleBox(id) {
+    const box = document.getElementById(id);
+
+    if (!box) {
+        return;
+    }
+
+    box.classList.toggle('hidden');
+}
+</script>
 
 @endsection
