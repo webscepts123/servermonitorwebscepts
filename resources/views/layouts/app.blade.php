@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html lang="en" x-data="{ sidebarOpen: false, profileOpen: false, quickSearchOpen: false }">
+<html lang="en"
+      x-data="enterpriseLayout()"
+      x-init="initNotifications()">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -113,6 +115,10 @@
             animation: wsFade .22s ease-in-out;
         }
 
+        .ws-toast {
+            animation: wsToast .28s ease-out;
+        }
+
         @keyframes wsFade {
             from {
                 opacity: 0;
@@ -124,8 +130,42 @@
                 transform: translateY(0);
             }
         }
+
+        @keyframes wsToast {
+            from {
+                opacity: 0;
+                transform: translateX(30px) scale(.98);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateX(0) scale(1);
+            }
+        }
     </style>
 </head>
+
+@php
+    $notificationItems = collect();
+
+    if (class_exists(\App\Models\ServerSecurityAlert::class)) {
+        try {
+            $notificationItems = \App\Models\ServerSecurityAlert::query()
+                ->latest()
+                ->limit(8)
+                ->get();
+        } catch (\Throwable $e) {
+            $notificationItems = collect();
+        }
+    }
+
+    $unreadNotificationCount = $notificationItems
+        ->filter(fn ($item) => empty($item->is_resolved))
+        ->count();
+
+    $latestCriticalNotification = $notificationItems
+        ->first(fn ($item) => in_array($item->level ?? '', ['danger', 'critical', 'warning']));
+@endphp
 
 <body class="bg-slate-100 min-h-screen text-slate-800">
 
@@ -146,7 +186,6 @@
         <div class="px-5 py-5 border-b border-white/10">
             <div class="flex items-center gap-3">
 
-                {{-- Professional logo mark, no large image --}}
                 <div class="w-11 h-11 rounded-2xl ws-logo-mark flex items-center justify-center shadow-lg">
                     <span class="text-white font-black text-lg tracking-tight">WS</span>
                 </div>
@@ -191,10 +230,10 @@
                     ],
 
                     'Panel Accounts' => [
-                            ['cPanel / WHM', 'panel.cpanel', 'fa-cpanel', ['panel.cpanel']],
-                            ['Plesk Accounts', 'panel.plesk', 'fa-layer-group', ['panel.plesk']],
-                            ['WordPress', 'panel.wordpress', 'fa-wordpress', ['panel.wordpress']],
-                        ],
+                        ['cPanel / WHM', 'panel.cpanel', 'fa-cpanel', ['panel.cpanel']],
+                        ['Plesk Accounts', 'panel.plesk', 'fa-layer-group', ['panel.plesk']],
+                        ['WordPress', 'panel.wordpress', 'fa-wordpress', ['panel.wordpress']],
+                    ],
 
                     'Monitoring' => [
                         ['Uptime Status', 'monitoring.uptime', 'fa-heart-pulse', ['monitoring.uptime']],
@@ -387,10 +426,119 @@
                     </div>
 
                     {{-- Notification --}}
-                    <button class="relative w-11 h-11 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center justify-center">
-                        <i class="fa-solid fa-bell"></i>
-                        <span class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-white"></span>
-                    </button>
+                    <div class="relative" @click.outside="notificationOpen = false">
+                        <button type="button"
+                                @click="toggleNotifications()"
+                                class="relative w-11 h-11 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center justify-center">
+                            <i class="fa-solid fa-bell"></i>
+
+                            @if($unreadNotificationCount > 0)
+                                <span class="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[10px] font-black flex items-center justify-center border-2 border-white">
+                                    {{ $unreadNotificationCount > 9 ? '9+' : $unreadNotificationCount }}
+                                </span>
+                            @else
+                                <span class="absolute top-2 right-2 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></span>
+                            @endif
+                        </button>
+
+                        <div x-cloak
+                             x-show="notificationOpen"
+                             x-transition
+                             class="absolute right-0 mt-3 w-[360px] max-w-[92vw] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-50">
+
+                            <div class="p-4 border-b bg-slate-50 flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-black text-slate-900">Notifications</h3>
+                                    <p class="text-xs text-slate-500">
+                                        Server alerts, security issues and monitoring updates.
+                                    </p>
+                                </div>
+
+                                <button type="button"
+                                        @click="notificationOpen = false"
+                                        class="w-9 h-9 rounded-xl bg-white border hover:bg-slate-100">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+
+                            <div class="max-h-[430px] overflow-y-auto">
+                                @forelse($notificationItems as $notice)
+                                    @php
+                                        $level = strtolower($notice->level ?? 'info');
+
+                                        $levelClass = match($level) {
+                                            'danger', 'critical' => 'bg-red-100 text-red-700',
+                                            'warning' => 'bg-yellow-100 text-yellow-700',
+                                            'success' => 'bg-green-100 text-green-700',
+                                            default => 'bg-blue-100 text-blue-700',
+                                        };
+
+                                        $iconClass = match($level) {
+                                            'danger', 'critical' => 'fa-triangle-exclamation',
+                                            'warning' => 'fa-circle-exclamation',
+                                            'success' => 'fa-circle-check',
+                                            default => 'fa-circle-info',
+                                        };
+                                    @endphp
+
+                                    <div class="p-4 border-b hover:bg-slate-50">
+                                        <div class="flex gap-3">
+                                            <div class="w-10 h-10 rounded-2xl {{ $levelClass }} flex items-center justify-center shrink-0">
+                                                <i class="fa-solid {{ $iconClass }}"></i>
+                                            </div>
+
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex items-center gap-2 flex-wrap">
+                                                    <p class="font-black text-slate-900 text-sm truncate">
+                                                        {{ $notice->title ?? 'Monitoring Alert' }}
+                                                    </p>
+
+                                                    <span class="px-2 py-0.5 rounded-full {{ $levelClass }} text-[10px] font-black uppercase">
+                                                        {{ $level }}
+                                                    </span>
+                                                </div>
+
+                                                <p class="text-xs text-slate-500 mt-1 line-clamp-2">
+                                                    {{ \Illuminate\Support\Str::limit($notice->message ?? 'No details available.', 120) }}
+                                                </p>
+
+                                                <p class="text-[11px] text-slate-400 mt-2">
+                                                    {{ optional($notice->created_at)->diffForHumans() ?? 'Just now' }}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <div class="p-8 text-center">
+                                        <div class="mx-auto w-14 h-14 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center mb-3">
+                                            <i class="fa-solid fa-circle-check text-xl"></i>
+                                        </div>
+
+                                        <h4 class="font-black text-slate-900">No alerts</h4>
+                                        <p class="text-sm text-slate-500 mt-1">
+                                            Your monitoring system has no new notifications.
+                                        </p>
+                                    </div>
+                                @endforelse
+                            </div>
+
+                            <div class="p-3 bg-slate-50 border-t grid grid-cols-2 gap-2">
+                                @if(Route::has('security.alerts'))
+                                    <a href="{{ route('security.alerts') }}"
+                                       class="px-4 py-3 rounded-xl bg-slate-900 text-white text-center font-black text-sm">
+                                        View Alerts
+                                    </a>
+                                @endif
+
+                                @if(Route::has('servers.index'))
+                                    <a href="{{ route('servers.index') }}"
+                                       class="px-4 py-3 rounded-xl bg-blue-600 text-white text-center font-black text-sm">
+                                        Servers
+                                    </a>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
 
                     {{-- Profile --}}
                     <div class="relative" @click.outside="profileOpen = false">
@@ -461,24 +609,6 @@
         {{-- Page Body --}}
         <section class="p-4 lg:p-6">
 
-            @if(session('success'))
-                <div class="mb-5 rounded-2xl bg-green-100 border border-green-300 text-green-800 px-5 py-4 flex items-center gap-3 shadow-sm">
-                    <div class="w-10 h-10 rounded-xl bg-green-200 flex items-center justify-center">
-                        <i class="fa-solid fa-circle-check"></i>
-                    </div>
-                    <span class="font-semibold">{{ session('success') }}</span>
-                </div>
-            @endif
-
-            @if(session('error'))
-                <div class="mb-5 rounded-2xl bg-red-100 border border-red-300 text-red-800 px-5 py-4 flex items-center gap-3 shadow-sm">
-                    <div class="w-10 h-10 rounded-xl bg-red-200 flex items-center justify-center">
-                        <i class="fa-solid fa-circle-exclamation"></i>
-                    </div>
-                    <span class="font-semibold">{{ session('error') }}</span>
-                </div>
-            @endif
-
             <div class="ws-fade">
                 @yield('content')
             </div>
@@ -486,6 +616,92 @@
         </section>
 
     </main>
+</div>
+
+{{-- Toast Notifications --}}
+<div class="fixed top-24 right-5 z-[100] space-y-3 w-[380px] max-w-[92vw]">
+
+    @if(session('success'))
+        <div x-data="{ show: true }"
+             x-init="setTimeout(() => show = false, 6000)"
+             x-show="show"
+             x-transition
+             class="ws-toast rounded-2xl bg-green-600 text-white shadow-2xl p-4 flex gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+
+            <div class="flex-1">
+                <p class="font-black">Success</p>
+                <p class="text-sm text-green-50">{{ session('success') }}</p>
+            </div>
+
+            <button @click="show = false" class="text-white/80 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div x-data="{ show: true }"
+             x-init="setTimeout(() => show = false, 8000)"
+             x-show="show"
+             x-transition
+             class="ws-toast rounded-2xl bg-red-600 text-white shadow-2xl p-4 flex gap-3">
+            <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-circle-exclamation"></i>
+            </div>
+
+            <div class="flex-1">
+                <p class="font-black">Error</p>
+                <p class="text-sm text-red-50">{{ session('error') }}</p>
+            </div>
+
+            <button @click="show = false" class="text-white/80 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    @endif
+
+    @if($latestCriticalNotification)
+        <div x-data="{ show: localStorage.getItem('ws_last_alert_id') !== '{{ $latestCriticalNotification->id ?? '0' }}' }"
+             x-init="
+                if (show) {
+                    localStorage.setItem('ws_last_alert_id', '{{ $latestCriticalNotification->id ?? '0' }}');
+                    notifyBrowser(
+                        @js($latestCriticalNotification->title ?? 'Webscepts Alert'),
+                        @js(\Illuminate\Support\Str::limit($latestCriticalNotification->message ?? 'A server alert was detected.', 140))
+                    );
+                    setTimeout(() => show = false, 10000);
+                }
+             "
+             x-show="show"
+             x-transition
+             class="ws-toast rounded-2xl bg-slate-950 text-white shadow-2xl p-4 flex gap-3 border border-red-500/30">
+            <div class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-bell"></i>
+            </div>
+
+            <div class="flex-1">
+                <p class="font-black">
+                    {{ $latestCriticalNotification->title ?? 'Webscepts Alert' }}
+                </p>
+                <p class="text-sm text-slate-300">
+                    {{ \Illuminate\Support\Str::limit($latestCriticalNotification->message ?? 'A server alert was detected.', 140) }}
+                </p>
+
+                @if(Route::has('security.alerts'))
+                    <a href="{{ route('security.alerts') }}" class="inline-block mt-2 text-sm text-blue-300 font-bold hover:underline">
+                        View alerts
+                    </a>
+                @endif
+            </div>
+
+            <button @click="show = false" class="text-white/80 hover:text-white">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    @endif
 </div>
 
 {{-- Quick Search Modal --}}
@@ -556,12 +772,67 @@
                     </a>
                 @endif
 
+                @if(Route::has('domains.index'))
+                    <a href="{{ route('domains.index') }}" class="enterprise-search-link rounded-xl border p-4 hover:bg-slate-50 font-bold">
+                        <i class="fa-solid fa-globe text-blue-600 mr-2"></i>Domain Manager
+                    </a>
+                @endif
+
             </div>
         </div>
     </div>
 </div>
 
 <script>
+    function enterpriseLayout() {
+        return {
+            sidebarOpen: false,
+            profileOpen: false,
+            quickSearchOpen: false,
+            notificationOpen: false,
+
+            toggleNotifications() {
+                this.notificationOpen = !this.notificationOpen;
+                this.profileOpen = false;
+                this.quickSearchOpen = false;
+            },
+
+            initNotifications() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    setTimeout(() => {
+                        Notification.requestPermission().catch(() => {});
+                    }, 1200);
+                }
+            },
+
+            notifyBrowser(title, body) {
+                if (!('Notification' in window)) {
+                    return;
+                }
+
+                if (Notification.permission === 'granted') {
+                    new Notification(title, {
+                        body: body,
+                        icon: '/favicon.ico',
+                    });
+                }
+            }
+        }
+    }
+
+    function notifyBrowser(title, body) {
+        if (!('Notification' in window)) {
+            return;
+        }
+
+        if (Notification.permission === 'granted') {
+            new Notification(title, {
+                body: body,
+                icon: '/favicon.ico',
+            });
+        }
+    }
+
     function filterEnterpriseLinks(value) {
         const query = value.toLowerCase();
         const links = document.querySelectorAll('.enterprise-search-link');

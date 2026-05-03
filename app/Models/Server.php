@@ -32,6 +32,7 @@ class Server extends Model
         'status',
         'local_backup_path',
         'sync_time',
+        'linked_domain',
         'auto_transfer',
         'google_drive_sync',
         'email_alerts_enabled',

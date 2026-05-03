@@ -11,6 +11,7 @@ use App\Http\Controllers\WordPressManagerController;
 use App\Http\Controllers\SmsController;
 use App\Http\Controllers\PanelAccountPageController;
 use App\Http\Controllers\LiteSpeedController;
+use App\Http\Controllers\DomainController;
 
 /*
 |--------------------------------------------------------------------------
@@ -58,6 +59,9 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/panel/wordpress', [PanelAccountPageController::class, 'wordpress'])
         ->name('panel.wordpress');
+
+
+    
 
     /*
     |--------------------------------------------------------------------------
@@ -412,12 +416,29 @@ Route::middleware(['auth'])->group(function () {
     */
 
     Route::prefix('domains')
-        ->name('domains.')
-        ->group(function () {
+    ->name('domains.')
+    ->group(function () {
+        Route::get('/', [DomainController::class, 'index'])
+            ->name('index');
 
-            Route::get('/', [App\Http\Controllers\DomainController::class, 'index'])
-                ->name('index');
-        });
+        Route::post('/servers/{server}/link', [DomainController::class, 'linkServer'])
+            ->name('servers.link');
+
+        Route::post('/servers/{server}/unlink', [DomainController::class, 'unlinkServer'])
+            ->name('servers.unlink');
+
+        Route::post('/zone/create', [DomainController::class, 'createZone'])
+            ->name('zone.create');
+
+        Route::get('/records/{domain}', [DomainController::class, 'records'])
+            ->name('records');
+
+        Route::post('/records/add', [DomainController::class, 'addRecord'])
+            ->name('records.add');
+
+        Route::post('/records/delete', [DomainController::class, 'deleteRecord'])
+            ->name('records.delete');
+    });
 
     /*
     |--------------------------------------------------------------------------

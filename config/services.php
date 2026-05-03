@@ -41,4 +41,10 @@ return [
         'sender_id' => env('SMS_SENDER_ID', 'WEBSCEPT'),
     ],
 
+    'cloudns' => [
+    'auth_id' => env('CLOUDNS_AUTH_ID'),
+    'auth_password' => env('CLOUDNS_AUTH_PASSWORD'),
+    'api_url' => env('CLOUDNS_API_URL', 'https://api.cloudns.net'),
+],
+
 ];
