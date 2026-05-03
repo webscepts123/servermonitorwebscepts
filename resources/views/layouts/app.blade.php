@@ -53,7 +53,7 @@
             @php
                 $menuGroups = [
                     'Main' => [
-                        ['Dashboard', 'dashboard', 'fa-chart-line'],
+                        ['Dashboard', 'dashboard.index', 'fa-chart-line'],
                         ['All Servers', 'servers.index', 'fa-server'],
                         ['Add Server', 'servers.create', 'fa-circle-plus'],
                     ],

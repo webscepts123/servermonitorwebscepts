@@ -6,7 +6,8 @@ use App\Http\Controllers\ServerController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\CpanelAccountController;
 use App\Http\Controllers\WordPressManagerController;
-
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\SmsController;
 
 
 /*
@@ -24,9 +25,19 @@ Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
 |--------------------------------------------------------------------------
 */
 
+Route::middleware(['auth', 'throttle:10,1'])->group(function () {
+
+    Route::post('/sms/send', [SmsController::class, 'send'])->name('sms.send');
+    Route::post('/sms/server/{server}/down', [SmsController::class, 'sendDownAlert'])->name('sms.down');
+    Route::post('/sms/server/{server}/recovery', [SmsController::class, 'sendRecoveryAlert'])->name('sms.recovery');
+
+});
+
 Route::middleware('auth')->group(function () {
 
-    Route::get('/', [ServerController::class, 'index'])->name('dashboard');
+    Route::get('/', [DashboardController::class, 'index'])
+    ->name('dashboard.index');
+
 
     /*
     |--------------------------------------------------------------------------
@@ -105,6 +116,25 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/backups/google-drive', [BackupController::class, 'uploadToGoogleDrive'])
     ->name('backups.google');
+
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | SMS Routes
+    |--------------------------------------------------------------------------
+    */
+
+    // Send custom SMS (API style)
+    Route::post('/sms/send', [SmsController::class, 'send'])
+        ->name('sms.send');
+
+    // Manual alert triggers
+    Route::post('/sms/server/{server}/down', [SmsController::class, 'sendDownAlert'])
+        ->name('sms.down');
+
+    Route::post('/sms/server/{server}/recovery', [SmsController::class, 'sendRecoveryAlert'])
+        ->name('sms.recovery');
 
 Route::post('/backups/full-sync', [BackupController::class, 'fullSync'])
     ->name('backups.fullSync');
@@ -199,6 +229,29 @@ Route::prefix('servers/{server}/cpanel-accounts')->name('servers.cpanel.')->grou
     Route::post('/{user}/password', [CpanelAccountController::class, 'updatePassword'])->name('password');
     Route::post('/{user}/package', [CpanelAccountController::class, 'updatePackage'])->name('package');
     Route::post('/{user}/ip', [CpanelAccountController::class, 'updateIp'])->name('ip');
+});
+
+Route::prefix('servers/{server}/cpanel-accounts')
+    ->name('servers.cpanel.')
+    ->middleware(['auth', 'throttle:20,1'])
+    ->group(function () {
+        Route::get('/', [CpanelAccountController::class, 'index'])->name('index');
+        Route::get('/create', [CpanelAccountController::class, 'create'])->name('create');
+        Route::post('/store', [CpanelAccountController::class, 'store'])->name('store');
+
+        Route::get('/{user}/edit', [CpanelAccountController::class, 'edit'])->name('edit');
+        Route::post('/{user}/password', [CpanelAccountController::class, 'updatePassword'])->name('password');
+        Route::post('/{user}/package', [CpanelAccountController::class, 'updatePackage'])->name('package');
+        Route::post('/{user}/ip', [CpanelAccountController::class, 'updateIp'])->name('ip');
+
+        Route::post('/{user}/sms', [CpanelAccountController::class, 'sendAccountSms'])->name('sms');
+        Route::post('/{user}/email', [CpanelAccountController::class, 'sendAccountEmail'])->name('email');
+
+        // Auto-login / SSO
+        Route::get('/{user}/login', [CpanelAccountController::class, 'autoLogin'])->name('login');
+        Route::get('/{user}/login/email', [CpanelAccountController::class, 'autoLoginEmail'])->name('login.email');
+        Route::get('/{user}/login/files', [CpanelAccountController::class, 'autoLoginFiles'])->name('login.files');
+        Route::get('/{user}/login/wordpress', [CpanelAccountController::class, 'autoLoginWordPress'])->name('login.wordpress');
 });
 
 /*

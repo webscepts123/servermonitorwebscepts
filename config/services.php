@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'sms' => [
+        'url' => env('SMS_API_URL', 'https://app.paid2marketing.com/api/v3/sms/send'),
+        'token' => env('SMS_API_TOKEN'),
+        'sender_id' => env('SMS_SENDER_ID', 'WEBSCEPT'),
+    ],
+
 ];
