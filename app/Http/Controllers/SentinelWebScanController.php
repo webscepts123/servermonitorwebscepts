@@ -7,6 +7,7 @@ use App\Models\Server;
 use App\Models\ServerSecurityAlert;
 use App\Services\SentinelWebScannerService;
 use Illuminate\Http\Request;
+use App\Services\SentinelPythonSecurityService;
 
 class SentinelWebScanController extends Controller
 {
@@ -30,36 +31,51 @@ class SentinelWebScanController extends Controller
         return view('technology.web-scanner', compact('servers', 'scans', 'stats'));
     }
 
-    public function scan(Request $request, SentinelWebScannerService $scanner)
+    public function scan(Request $request, SentinelPythonSecurityService $pythonScanner)
     {
         $data = $request->validate([
             'url' => 'required|string|max:500',
             'server_id' => 'nullable|exists:servers,id',
         ]);
-
+    
         try {
-            $result = $scanner->scan($data['url']);
-
+            $result = $pythonScanner->scanWebsite($data['url']);
+    
             $scan = SentinelWebScan::create([
                 'server_id' => $data['server_id'] ?? null,
-                ...$result,
+                'url' => $result['url'] ?? $data['url'],
+                'domain' => $result['domain'] ?? null,
+                'ip' => $result['ip'] ?? null,
+                'http_status' => $result['http_status'] ?? null,
+                'response_time_ms' => $result['response_time_ms'] ?? null,
+                'ssl_valid' => $result['ssl']['valid'] ?? false,
+                'ssl_expires_at' => $result['ssl']['expires_at'] ?? null,
+                'detected_technologies' => $result['detected_technologies'] ?? [],
+                'security_headers' => $result['security_headers'] ?? [],
+                'missing_headers' => $result['missing_headers'] ?? [],
+                'exposed_files' => $result['exposed_files'] ?? [],
+                'database_risks' => $result['database_risks'] ?? [],
+                'framework_risks' => $result['framework_risks'] ?? [],
+                'risk_score' => $result['risk_score'] ?? 0,
+                'risk_level' => $result['risk_level'] ?? 'low',
+                'summary' => $result['summary'] ?? null,
             ]);
-
+    
             if (in_array($scan->risk_level, ['critical', 'high'])) {
                 $this->createAlert(
                     $scan,
                     'web-scan',
                     $scan->risk_level === 'critical' ? 'danger' : 'warning',
-                    'High risk website scan detected',
+                    'SentinelCore smart web scan detected risk',
                     $scan->summary
                 );
             }
-
+    
             return redirect()
                 ->route('technology.webscanner.show', $scan)
-                ->with('success', 'Website scan completed successfully.');
+                ->with('success', 'SentinelCore smart scan completed successfully.');
         } catch (\Throwable $e) {
-            return back()->with('error', 'Scan failed: ' . $e->getMessage());
+            return back()->with('error', 'Smart scan failed: ' . $e->getMessage());
         }
     }
 
@@ -70,18 +86,35 @@ class SentinelWebScanController extends Controller
         return view('technology.web-scan-show', compact('scan'));
     }
 
-    public function rescan(SentinelWebScan $scan, SentinelWebScannerService $scanner)
+    public function rescan(SentinelWebScan $scan, SentinelPythonSecurityService $pythonScanner)
     {
         try {
-            $result = $scanner->scan($scan->url);
-
-            $scan->update($result);
-
+            $result = $pythonScanner->scanWebsite($scan->url);
+    
+            $scan->update([
+                'url' => $result['url'] ?? $scan->url,
+                'domain' => $result['domain'] ?? null,
+                'ip' => $result['ip'] ?? null,
+                'http_status' => $result['http_status'] ?? null,
+                'response_time_ms' => $result['response_time_ms'] ?? null,
+                'ssl_valid' => $result['ssl']['valid'] ?? false,
+                'ssl_expires_at' => $result['ssl']['expires_at'] ?? null,
+                'detected_technologies' => $result['detected_technologies'] ?? [],
+                'security_headers' => $result['security_headers'] ?? [],
+                'missing_headers' => $result['missing_headers'] ?? [],
+                'exposed_files' => $result['exposed_files'] ?? [],
+                'database_risks' => $result['database_risks'] ?? [],
+                'framework_risks' => $result['framework_risks'] ?? [],
+                'risk_score' => $result['risk_score'] ?? 0,
+                'risk_level' => $result['risk_level'] ?? 'low',
+                'summary' => $result['summary'] ?? null,
+            ]);
+    
             return redirect()
                 ->route('technology.webscanner.show', $scan)
-                ->with('success', 'Website re-scan completed successfully.');
+                ->with('success', 'SentinelCore smart re-scan completed successfully.');
         } catch (\Throwable $e) {
-            return back()->with('error', 'Re-scan failed: ' . $e->getMessage());
+            return back()->with('error', 'Smart re-scan failed: ' . $e->getMessage());
         }
     }
 

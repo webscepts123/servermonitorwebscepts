@@ -5,6 +5,9 @@
 @section('content')
 
 @php
+    use Illuminate\Support\Carbon;
+    use Illuminate\Support\Str;
+
     $latest = $server->checks->first();
 
     if ($latest && is_array($latest->services)) {
@@ -56,25 +59,44 @@
     $panelType = strtolower($server->panel_type ?? 'auto');
 
     $lastChecked = $latest?->checked_at ?? $latest?->created_at ?? null;
+    $lastCheckedText = $lastChecked ? Carbon::parse($lastChecked)->diffForHumans() : 'No checks yet';
 
-    $hiddenBaseFields = [
-        'name' => $server->name,
-        'host' => $server->host,
-        'website_url' => $server->website_url,
-        'panel_type' => $server->panel_type,
-        'ssh_port' => $server->ssh_port ?? 22,
-        'username' => $server->username,
-        'admin_email' => $server->admin_email,
-        'admin_phone' => $server->admin_phone,
-        'customer_name' => $server->customer_name,
-        'customer_email' => $server->customer_email,
-        'customer_phone' => $server->customer_phone,
-        'backup_server_id' => $server->backup_server_id,
-        'backup_path' => $server->backup_path,
-        'local_backup_path' => $server->local_backup_path,
-        'google_drive_remote' => $server->google_drive_remote,
-        'disk_warning_percent' => $server->disk_warning_percent ?? 80,
-        'disk_transfer_percent' => $server->disk_transfer_percent ?? 90,
+    $sentinelScore = 0;
+    $sentinelScore += !empty($server->password) ? 20 : 0;
+    $sentinelScore += $emailEnabled ? 15 : 0;
+    $sentinelScore += $smsEnabled ? 15 : 0;
+    $sentinelScore += !empty($server->google_drive_sync) ? 15 : 0;
+    $sentinelScore += !empty($server->failover_enabled) ? 15 : 0;
+    $sentinelScore += !empty($server->dns_failover_enabled) ? 20 : 0;
+
+    $sentinelLevel = match (true) {
+        $sentinelScore >= 85 => 'Enterprise',
+        $sentinelScore >= 60 => 'Protected',
+        $sentinelScore >= 35 => 'Basic',
+        default => 'Risk',
+    };
+
+    $sentinelColor = match (true) {
+        $sentinelScore >= 85 => 'text-green-600',
+        $sentinelScore >= 60 => 'text-blue-600',
+        $sentinelScore >= 35 => 'text-yellow-600',
+        default => 'text-red-600',
+    };
+
+    $sentinelBar = match (true) {
+        $sentinelScore >= 85 => 'from-green-500 to-emerald-600',
+        $sentinelScore >= 60 => 'from-blue-500 to-cyan-600',
+        $sentinelScore >= 35 => 'from-yellow-500 to-orange-500',
+        default => 'from-red-500 to-orange-600',
+    };
+
+    $frameworkSecurity = [
+        ['name' => 'WordPress', 'icon' => 'fa-brands fa-wordpress', 'checks' => ['wp-config.php', 'XML-RPC', 'Plugins']],
+        ['name' => 'Laravel', 'icon' => 'fa-brands fa-laravel', 'checks' => ['.env', 'APP_DEBUG', 'Storage logs']],
+        ['name' => 'Angular', 'icon' => 'fa-brands fa-angular', 'checks' => ['Source maps', 'Env files']],
+        ['name' => 'Node.js', 'icon' => 'fa-brands fa-node-js', 'checks' => ['package.json', '.env', 'Stack traces']],
+        ['name' => 'PHP', 'icon' => 'fa-brands fa-php', 'checks' => ['phpinfo.php', 'config.php']],
+        ['name' => 'Database', 'icon' => 'fa-solid fa-database', 'checks' => ['MySQL', 'PostgreSQL', 'SQL dumps']],
     ];
 @endphp
 
@@ -164,44 +186,24 @@
                         </span>
                     @endif
 
-                    @if($emailEnabled)
-                        <span class="px-4 py-2 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100 text-xs font-bold">
-                            Email Alerts Enabled
-                        </span>
-                    @else
-                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
-                            Email Alerts Disabled
-                        </span>
-                    @endif
-
-                    @if($smsEnabled)
-                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-bold">
-                            SMS Alerts Enabled
-                        </span>
-                    @else
-                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
-                            SMS Alerts Disabled
-                        </span>
-                    @endif
+                    <span class="px-4 py-2 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-100 text-xs font-bold">
+                        Webscepts SentinelCore
+                    </span>
 
                     @if($litespeedActive)
                         <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400/40 text-red-100 text-xs font-bold">
                             LiteSpeed Active
                         </span>
-                    @elseif($litespeedStatus)
-                        <span class="px-4 py-2 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-100 text-xs font-bold">
-                            LiteSpeed {{ ucfirst($litespeedStatus) }}
-                        </span>
                     @else
                         <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
-                            LiteSpeed Unknown
+                            LiteSpeed {{ $litespeedStatus ? ucfirst($litespeedStatus) : 'Unknown' }}
                         </span>
                     @endif
                 </div>
             </div>
 
             {{-- ACTION BUTTONS --}}
-            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 w-full xl:w-[560px]">
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 w-full xl:w-[620px]">
 
                 @if(Route::has('servers.checkNow'))
                     <form method="POST" action="{{ route('servers.checkNow', $server) }}" class="w-full">
@@ -221,41 +223,25 @@
                     </form>
                 @endif
 
+                @if(Route::has('technology.webscanner.index'))
+                    <a href="{{ route('technology.webscanner.index') }}"
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700 text-sm font-black">
+                        <i class="fa-solid fa-magnifying-glass-chart mr-1"></i> Smart Scan
+                    </a>
+                @endif
+
+                @if(Route::has('technology.index'))
+                    <a href="{{ route('technology.index') }}"
+                       class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-black">
+                        <i class="fa-solid fa-shield-virus mr-1"></i> SentinelCore
+                    </a>
+                @endif
+
                 @if(Route::has('servers.litespeed.index'))
                     <a href="{{ route('servers.litespeed.index', $server) }}"
                        class="w-full min-h-[58px] flex items-center justify-center text-center px-4 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700 text-sm font-black">
                         <i class="fa-solid fa-bolt mr-1"></i> LiteSpeed
                     </a>
-                @endif
-
-                @if(Route::has('servers.litespeed.activate'))
-                    <form method="POST" action="{{ route('servers.litespeed.activate', $server) }}" class="w-full">
-                        @csrf
-                        <button onclick="return confirm('Activate or restart LiteSpeed on this server?')"
-                                class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-orange-600 text-white hover:bg-orange-700 text-sm font-black">
-                            <i class="fa-solid fa-bolt-lightning mr-1"></i> Activate LS
-                        </button>
-                    </form>
-                @endif
-
-                @if(Route::has('sms.down'))
-                    <form method="POST" action="{{ route('sms.down', $server) }}" class="w-full">
-                        @csrf
-                        <button onclick="return confirm('Send DOWN SMS alert to admin and customer?')"
-                                class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-red-700 text-white hover:bg-red-800 text-sm font-black">
-                            <i class="fa-solid fa-message mr-1"></i> Down SMS
-                        </button>
-                    </form>
-                @endif
-
-                @if(Route::has('sms.recovery'))
-                    <form method="POST" action="{{ route('sms.recovery', $server) }}" class="w-full">
-                        @csrf
-                        <button onclick="return confirm('Send RECOVERY SMS alert to admin and customer?')"
-                                class="w-full min-h-[58px] px-4 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-black">
-                            <i class="fa-solid fa-message mr-1"></i> Recovery SMS
-                        </button>
-                    </form>
                 @endif
 
                 @if(Route::has('servers.cpanel.index'))
@@ -291,6 +277,81 @@
         </div>
     </div>
 
+    {{-- SENTINELCORE SERVER PROTECTION --}}
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-red-950 to-blue-950 p-7 text-white shadow-xl">
+        <div class="absolute -top-28 right-0 w-96 h-96 bg-red-500/20 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-28 left-0 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl"></div>
+
+        <div class="relative grid grid-cols-1 xl:grid-cols-3 gap-6 items-center">
+            <div class="xl:col-span-2">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h2 class="text-3xl font-black">
+                        Webscepts SentinelCore Protection
+                    </h2>
+
+                    <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-bold">
+                        {{ $sentinelLevel }}
+                    </span>
+                </div>
+
+                <p class="text-slate-300 mt-3 max-w-4xl">
+                    Smart protection for encrypted credentials, cPanel/Plesk accounts, WordPress, Laravel, Angular,
+                    Node.js, PHP, MySQL/PostgreSQL, exposed files, SSL, headers, backups and DNS failover.
+                </p>
+
+                <div class="mt-5 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+                    <div class="rounded-2xl bg-white/10 border border-white/10 p-3">
+                        <p class="text-xs text-slate-300">Password</p>
+                        <p class="text-sm font-black">{{ !empty($server->password) ? 'Encrypted' : 'Missing' }}</p>
+                    </div>
+
+                    <div class="rounded-2xl bg-white/10 border border-white/10 p-3">
+                        <p class="text-xs text-slate-300">Email</p>
+                        <p class="text-sm font-black">{{ $emailEnabled ? 'Enabled' : 'Disabled' }}</p>
+                    </div>
+
+                    <div class="rounded-2xl bg-white/10 border border-white/10 p-3">
+                        <p class="text-xs text-slate-300">SMS</p>
+                        <p class="text-sm font-black">{{ $smsEnabled ? 'Enabled' : 'Disabled' }}</p>
+                    </div>
+
+                    <div class="rounded-2xl bg-white/10 border border-white/10 p-3">
+                        <p class="text-xs text-slate-300">Drive</p>
+                        <p class="text-sm font-black">{{ !empty($server->google_drive_sync) ? 'Enabled' : 'Disabled' }}</p>
+                    </div>
+
+                    <div class="rounded-2xl bg-white/10 border border-white/10 p-3">
+                        <p class="text-xs text-slate-300">Backup FO</p>
+                        <p class="text-sm font-black">{{ !empty($server->failover_enabled) ? 'Enabled' : 'Disabled' }}</p>
+                    </div>
+
+                    <div class="rounded-2xl bg-white/10 border border-white/10 p-3">
+                        <p class="text-xs text-slate-300">DNS FO</p>
+                        <p class="text-sm font-black">{{ !empty($server->dns_failover_enabled) ? 'Enabled' : 'Disabled' }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rounded-3xl bg-white/10 border border-white/10 p-6">
+                <p class="text-slate-300 font-bold">Server Security Score</p>
+
+                <div class="flex items-end gap-2 mt-2">
+                    <h3 class="text-6xl font-black">{{ $sentinelScore }}</h3>
+                    <span class="text-2xl font-black mb-2">%</span>
+                </div>
+
+                <p class="font-black text-lg mt-2 {{ $sentinelColor }}">
+                    {{ $sentinelLevel }}
+                </p>
+
+                <div class="mt-5 h-4 bg-white/10 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r {{ $sentinelBar }}"
+                         style="width: {{ min($sentinelScore, 100) }}%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- QUICK STATS --}}
     <div class="grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-5">
 
@@ -306,7 +367,7 @@
             </div>
 
             <div class="h-2 bg-slate-200 rounded-full mt-4">
-                <div class="h-2 bg-blue-600 rounded-full" style="width: {{ min($cpu, 100) }}%"></div>
+                <div class="h-2 {{ $cpu >= 85 ? 'bg-red-600' : 'bg-blue-600' }} rounded-full" style="width: {{ min($cpu, 100) }}%"></div>
             </div>
         </div>
 
@@ -322,7 +383,7 @@
             </div>
 
             <div class="h-2 bg-slate-200 rounded-full mt-4">
-                <div class="h-2 bg-purple-600 rounded-full" style="width: {{ min($ram, 100) }}%"></div>
+                <div class="h-2 {{ $ram >= 85 ? 'bg-red-600' : 'bg-purple-600' }} rounded-full" style="width: {{ min($ram, 100) }}%"></div>
             </div>
         </div>
 
@@ -362,13 +423,57 @@
             </div>
 
             <p class="text-xs text-slate-500 mt-3">
-                Last check: {{ $lastChecked ?? 'No checks yet' }}
+                Last check: {{ $lastCheckedText }}
             </p>
         </div>
 
     </div>
 
-    {{-- SERVER + ALERT DETAILS WITH EDIT --}}
+    {{-- FRAMEWORK SECURITY MODULES --}}
+    <div class="bg-white rounded-3xl shadow border border-slate-100 overflow-hidden">
+        <div class="px-6 py-5 border-b flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+                <h3 class="text-2xl font-black text-slate-900">Technology & Framework Security</h3>
+                <p class="text-sm text-slate-500">
+                    Use Smart Scan to detect exposed files, headers, SSL, CMS and framework risks on this server website.
+                </p>
+            </div>
+
+            @if(Route::has('technology.webscanner.index'))
+                <a href="{{ route('technology.webscanner.index') }}"
+                   class="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-center">
+                    Run Website Scan
+                </a>
+            @endif
+        </div>
+
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            @foreach($frameworkSecurity as $item)
+                <div class="rounded-3xl border border-slate-100 p-5 hover:shadow-lg transition">
+                    <div class="flex items-start gap-4">
+                        <div class="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+                            <i class="{{ $item['icon'] }} text-xl"></i>
+                        </div>
+
+                        <div>
+                            <h4 class="font-black text-slate-900 text-lg">{{ $item['name'] }}</h4>
+                            <p class="text-sm text-green-600 font-black mt-1">Scanner Ready</p>
+
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                @foreach($item['checks'] as $check)
+                                    <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
+                                        {{ $check }}
+                                    </span>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+
+    {{-- SERVER + ALERT DETAILS --}}
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
         {{-- SERVER INFO --}}
@@ -376,11 +481,12 @@
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-black text-slate-800">Server Info</h3>
 
-                <button type="button"
-                        onclick="toggleBox('serverInfoEdit')"
-                        class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">
-                    <i class="fa-solid fa-pen mr-1"></i>Edit
-                </button>
+                @if(Route::has('servers.edit'))
+                    <a href="{{ route('servers.edit', $server) }}"
+                       class="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700">
+                        <i class="fa-solid fa-pen mr-1"></i>Edit
+                    </a>
+                @endif
             </div>
 
             <div class="space-y-3 text-sm">
@@ -416,124 +522,9 @@
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">Last Checked</span>
                     <span class="font-bold text-slate-800">
-                        {{ $lastChecked ?? 'No checks yet' }}
+                        {{ $lastCheckedText }}
                     </span>
                 </div>
-            </div>
-
-            <div id="serverInfoEdit" class="hidden mt-6 border-t pt-5">
-                <form method="POST" action="{{ route('servers.update', $server) }}" class="space-y-4">
-                    @csrf
-                    @method('PUT')
-
-                    <input type="hidden" name="admin_email" value="{{ $server->admin_email }}">
-                    <input type="hidden" name="admin_phone" value="{{ $server->admin_phone }}">
-                    <input type="hidden" name="customer_name" value="{{ $server->customer_name }}">
-                    <input type="hidden" name="customer_email" value="{{ $server->customer_email }}">
-                    <input type="hidden" name="customer_phone" value="{{ $server->customer_phone }}">
-                    <input type="hidden" name="backup_server_id" value="{{ $server->backup_server_id }}">
-                    <input type="hidden" name="backup_path" value="{{ $server->backup_path }}">
-                    <input type="hidden" name="local_backup_path" value="{{ $server->local_backup_path }}">
-                    <input type="hidden" name="google_drive_remote" value="{{ $server->google_drive_remote }}">
-                    <input type="hidden" name="disk_warning_percent" value="{{ $server->disk_warning_percent ?? 80 }}">
-                    <input type="hidden" name="disk_transfer_percent" value="{{ $server->disk_transfer_percent ?? 90 }}">
-
-                    @if($server->is_active)
-                        <input type="hidden" name="is_active" value="1">
-                    @endif
-
-                    @if($server->auto_transfer)
-                        <input type="hidden" name="auto_transfer" value="1">
-                    @endif
-
-                    @if($server->google_drive_sync)
-                        <input type="hidden" name="google_drive_sync" value="1">
-                    @endif
-
-                    @if($server->email_alerts_enabled)
-                        <input type="hidden" name="email_alerts_enabled" value="1">
-                    @endif
-
-                    @if($server->sms_alerts_enabled)
-                        <input type="hidden" name="sms_alerts_enabled" value="1">
-                    @endif
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Server Name</label>
-                        <input type="text"
-                               name="name"
-                               value="{{ old('name', $server->name) }}"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
-                               required>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Host / IP</label>
-                        <input type="text"
-                               name="host"
-                               value="{{ old('host', $server->host) }}"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
-                               required>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Website URL</label>
-                        <input type="url"
-                               name="website_url"
-                               value="{{ old('website_url', $server->website_url) }}"
-                               placeholder="https://example.com"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-1">SSH Port</label>
-                            <input type="number"
-                                   name="ssh_port"
-                                   value="{{ old('ssh_port', $server->ssh_port ?? 22) }}"
-                                   class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
-                                   required>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-1">Panel Type</label>
-                            <select name="panel_type"
-                                    class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
-                                <option value="">Auto Detect</option>
-                                <option value="cpanel" {{ old('panel_type', $server->panel_type) === 'cpanel' ? 'selected' : '' }}>
-                                    cPanel / WHM
-                                </option>
-                                <option value="plesk" {{ old('panel_type', $server->panel_type) === 'plesk' ? 'selected' : '' }}>
-                                    Plesk
-                                </option>
-                                <option value="none" {{ old('panel_type', $server->panel_type) === 'none' ? 'selected' : '' }}>
-                                    No Panel
-                                </option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Username</label>
-                        <input type="text"
-                               name="username"
-                               value="{{ old('username', $server->username) }}"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none"
-                               required>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Password</label>
-                        <input type="password"
-                               name="password"
-                               placeholder="Leave blank to keep current password"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-
-                    <button class="w-full px-5 py-3 rounded-xl bg-blue-600 text-white font-black hover:bg-blue-700">
-                        Save Server Info
-                    </button>
-                </form>
             </div>
         </div>
 
@@ -542,11 +533,12 @@
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-black text-slate-800">Admin Alerts</h3>
 
-                <button type="button"
-                        onclick="toggleBox('adminAlertsEdit')"
-                        class="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700">
-                    <i class="fa-solid fa-pen mr-1"></i>Edit
-                </button>
+                @if(Route::has('servers.edit'))
+                    <a href="{{ route('servers.edit', $server) }}"
+                       class="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-bold hover:bg-purple-700">
+                        <i class="fa-solid fa-pen mr-1"></i>Edit
+                    </a>
+                @endif
             </div>
 
             <div class="space-y-3 text-sm">
@@ -570,83 +562,6 @@
                     </span>
                 </div>
             </div>
-
-            <div id="adminAlertsEdit" class="hidden mt-6 border-t pt-5">
-                <form method="POST" action="{{ route('servers.update', $server) }}" class="space-y-4">
-                    @csrf
-                    @method('PUT')
-
-                    <input type="hidden" name="name" value="{{ $server->name }}">
-                    <input type="hidden" name="host" value="{{ $server->host }}">
-                    <input type="hidden" name="website_url" value="{{ $server->website_url }}">
-                    <input type="hidden" name="panel_type" value="{{ $server->panel_type }}">
-                    <input type="hidden" name="ssh_port" value="{{ $server->ssh_port ?? 22 }}">
-                    <input type="hidden" name="username" value="{{ $server->username }}">
-                    <input type="hidden" name="customer_name" value="{{ $server->customer_name }}">
-                    <input type="hidden" name="customer_email" value="{{ $server->customer_email }}">
-                    <input type="hidden" name="customer_phone" value="{{ $server->customer_phone }}">
-                    <input type="hidden" name="backup_server_id" value="{{ $server->backup_server_id }}">
-                    <input type="hidden" name="backup_path" value="{{ $server->backup_path }}">
-                    <input type="hidden" name="local_backup_path" value="{{ $server->local_backup_path }}">
-                    <input type="hidden" name="google_drive_remote" value="{{ $server->google_drive_remote }}">
-                    <input type="hidden" name="disk_warning_percent" value="{{ $server->disk_warning_percent ?? 80 }}">
-                    <input type="hidden" name="disk_transfer_percent" value="{{ $server->disk_transfer_percent ?? 90 }}">
-
-                    @if($server->is_active)
-                        <input type="hidden" name="is_active" value="1">
-                    @endif
-
-                    @if($server->auto_transfer)
-                        <input type="hidden" name="auto_transfer" value="1">
-                    @endif
-
-                    @if($server->google_drive_sync)
-                        <input type="hidden" name="google_drive_sync" value="1">
-                    @endif
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Admin Email</label>
-                        <input type="email"
-                               name="admin_email"
-                               value="{{ old('admin_email', $server->admin_email) }}"
-                               placeholder="admin@example.com"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-purple-500 outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Admin Phone</label>
-                        <input type="text"
-                               name="admin_phone"
-                               value="{{ old('admin_phone', $server->admin_phone) }}"
-                               placeholder="947XXXXXXXX"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-purple-500 outline-none">
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <label class="flex items-center gap-3 rounded-xl border p-4 cursor-pointer hover:bg-slate-50">
-                            <input type="checkbox"
-                                   name="email_alerts_enabled"
-                                   value="1"
-                                   class="w-5 h-5"
-                                   {{ old('email_alerts_enabled', $server->email_alerts_enabled) ? 'checked' : '' }}>
-                            <span class="font-bold text-slate-700">Email Alerts</span>
-                        </label>
-
-                        <label class="flex items-center gap-3 rounded-xl border p-4 cursor-pointer hover:bg-slate-50">
-                            <input type="checkbox"
-                                   name="sms_alerts_enabled"
-                                   value="1"
-                                   class="w-5 h-5"
-                                   {{ old('sms_alerts_enabled', $server->sms_alerts_enabled) ? 'checked' : '' }}>
-                            <span class="font-bold text-slate-700">SMS Alerts</span>
-                        </label>
-                    </div>
-
-                    <button class="w-full px-5 py-3 rounded-xl bg-purple-600 text-white font-black hover:bg-purple-700">
-                        Save Admin Alerts
-                    </button>
-                </form>
-            </div>
         </div>
 
         {{-- CUSTOMER ALERTS --}}
@@ -654,11 +569,12 @@
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-black text-slate-800">Customer Alerts</h3>
 
-                <button type="button"
-                        onclick="toggleBox('customerAlertsEdit')"
-                        class="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700">
-                    <i class="fa-solid fa-pen mr-1"></i>Edit
-                </button>
+                @if(Route::has('servers.edit'))
+                    <a href="{{ route('servers.edit', $server) }}"
+                       class="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700">
+                        <i class="fa-solid fa-pen mr-1"></i>Edit
+                    </a>
+                @endif
             </div>
 
             <div class="space-y-3 text-sm">
@@ -676,79 +592,6 @@
                     <p class="text-slate-500">Customer Phone</p>
                     <p class="font-bold text-slate-800">{{ $customerPhone ?? 'Not set' }}</p>
                 </div>
-            </div>
-
-            <div id="customerAlertsEdit" class="hidden mt-6 border-t pt-5">
-                <form method="POST" action="{{ route('servers.update', $server) }}" class="space-y-4">
-                    @csrf
-                    @method('PUT')
-
-                    <input type="hidden" name="name" value="{{ $server->name }}">
-                    <input type="hidden" name="host" value="{{ $server->host }}">
-                    <input type="hidden" name="website_url" value="{{ $server->website_url }}">
-                    <input type="hidden" name="panel_type" value="{{ $server->panel_type }}">
-                    <input type="hidden" name="ssh_port" value="{{ $server->ssh_port ?? 22 }}">
-                    <input type="hidden" name="username" value="{{ $server->username }}">
-                    <input type="hidden" name="admin_email" value="{{ $server->admin_email }}">
-                    <input type="hidden" name="admin_phone" value="{{ $server->admin_phone }}">
-                    <input type="hidden" name="backup_server_id" value="{{ $server->backup_server_id }}">
-                    <input type="hidden" name="backup_path" value="{{ $server->backup_path }}">
-                    <input type="hidden" name="local_backup_path" value="{{ $server->local_backup_path }}">
-                    <input type="hidden" name="google_drive_remote" value="{{ $server->google_drive_remote }}">
-                    <input type="hidden" name="disk_warning_percent" value="{{ $server->disk_warning_percent ?? 80 }}">
-                    <input type="hidden" name="disk_transfer_percent" value="{{ $server->disk_transfer_percent ?? 90 }}">
-
-                    @if($server->is_active)
-                        <input type="hidden" name="is_active" value="1">
-                    @endif
-
-                    @if($server->auto_transfer)
-                        <input type="hidden" name="auto_transfer" value="1">
-                    @endif
-
-                    @if($server->google_drive_sync)
-                        <input type="hidden" name="google_drive_sync" value="1">
-                    @endif
-
-                    @if($server->email_alerts_enabled)
-                        <input type="hidden" name="email_alerts_enabled" value="1">
-                    @endif
-
-                    @if($server->sms_alerts_enabled)
-                        <input type="hidden" name="sms_alerts_enabled" value="1">
-                    @endif
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Customer Name</label>
-                        <input type="text"
-                               name="customer_name"
-                               value="{{ old('customer_name', $server->customer_name) }}"
-                               placeholder="Customer name"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500 outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Customer Email</label>
-                        <input type="email"
-                               name="customer_email"
-                               value="{{ old('customer_email', $server->customer_email) }}"
-                               placeholder="customer@example.com"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500 outline-none">
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-bold text-slate-700 mb-1">Customer Phone</label>
-                        <input type="text"
-                               name="customer_phone"
-                               value="{{ old('customer_phone', $server->customer_phone) }}"
-                               placeholder="947XXXXXXXX"
-                               class="w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-green-500 outline-none">
-                    </div>
-
-                    <button class="w-full px-5 py-3 rounded-xl bg-green-600 text-white font-black hover:bg-green-700">
-                        Save Customer Alerts
-                    </button>
-                </form>
             </div>
         </div>
 
@@ -788,81 +631,21 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            @foreach(['lsws', 'lshttpd', 'openlitespeed', 'litespeed', 'lswsctrl'] as $serviceName)
+                @php
+                    $serviceValue = $services[$serviceName] ?? 'unknown';
+                    $active = strtolower($serviceValue) === 'active';
+                @endphp
 
-            <div class="rounded-2xl border p-4">
-                <p class="text-sm text-slate-500 font-semibold">LSWS</p>
-                <h4 class="text-xl font-black mt-1 {{ ($services['lsws'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
-                    {{ ucfirst($services['lsws'] ?? 'unknown') }}
-                </h4>
-            </div>
-
-            <div class="rounded-2xl border p-4">
-                <p class="text-sm text-slate-500 font-semibold">LSHTTPD</p>
-                <h4 class="text-xl font-black mt-1 {{ ($services['lshttpd'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
-                    {{ ucfirst($services['lshttpd'] ?? 'unknown') }}
-                </h4>
-            </div>
-
-            <div class="rounded-2xl border p-4">
-                <p class="text-sm text-slate-500 font-semibold">OpenLiteSpeed</p>
-                <h4 class="text-xl font-black mt-1 {{ ($services['openlitespeed'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
-                    {{ ucfirst($services['openlitespeed'] ?? 'unknown') }}
-                </h4>
-            </div>
-
-            <div class="rounded-2xl border p-4">
-                <p class="text-sm text-slate-500 font-semibold">LiteSpeed</p>
-                <h4 class="text-xl font-black mt-1 {{ ($services['litespeed'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
-                    {{ ucfirst($services['litespeed'] ?? 'unknown') }}
-                </h4>
-            </div>
-
-            <div class="rounded-2xl border p-4">
-                <p class="text-sm text-slate-500 font-semibold">LSWSCTRL</p>
-                <h4 class="text-xl font-black mt-1 {{ ($services['lswsctrl'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
-                    {{ ucfirst($services['lswsctrl'] ?? 'unknown') }}
-                </h4>
-            </div>
-
+                <div class="rounded-2xl border p-4">
+                    <p class="text-sm text-slate-500 font-semibold uppercase">{{ $serviceName }}</p>
+                    <h4 class="text-xl font-black mt-1 {{ $active ? 'text-green-600' : 'text-slate-700' }}">
+                        {{ ucfirst($serviceValue) }}
+                    </h4>
+                </div>
+            @endforeach
         </div>
     </div>
-
-    {{-- MANUAL SMS --}}
-    @if(Route::has('sms.send'))
-        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
-            <h3 class="text-xl font-black text-slate-800 mb-4">Send Manual SMS</h3>
-
-            <form method="POST" action="{{ route('sms.send') }}" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                @csrf
-
-                <div>
-                    <label class="font-bold text-slate-700">Phone Number</label>
-                    <input type="text"
-                           name="phone"
-                           value="{{ old('phone', $customerPhone ?? $adminPhone ?? '') }}"
-                           placeholder="947XXXXXXXX"
-                           required
-                           class="w-full mt-1 px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-
-                <div class="lg:col-span-2">
-                    <label class="font-bold text-slate-700">Message</label>
-                    <input type="text"
-                           name="message"
-                           value="{{ old('message', $isOnline ? 'Webscept: '.$server->name.' is online.' : 'Webscept Alert: '.$server->name.' is offline.') }}"
-                           maxlength="500"
-                           required
-                           class="w-full mt-1 px-4 py-3 rounded-xl border focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-
-                <div class="lg:col-span-3">
-                    <button class="px-6 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-700">
-                        <i class="fa-solid fa-paper-plane mr-2"></i>Send SMS
-                    </button>
-                </div>
-            </form>
-        </div>
-    @endif
 
     {{-- PANEL STATUS + SERVICES --}}
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -871,7 +654,6 @@
             <h3 class="text-xl font-black mb-4">Panel & Website Status</h3>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
                 <div class="rounded-xl border p-4">
                     <p class="font-bold">cPanel / WHM</p>
                     @if($latest && !empty($latest->cpanel_online))
@@ -913,21 +695,6 @@
                     @endif
                     <p class="text-xs text-slate-500 mt-1">Port {{ $server->ssh_port ?? 22 }}</p>
                 </div>
-
-                <div class="rounded-xl border p-4 md:col-span-2">
-                    <p class="font-bold">LiteSpeed</p>
-
-                    @if($litespeedActive)
-                        <span class="text-green-600 font-black">Active</span>
-                    @elseif($litespeedStatus)
-                        <span class="text-red-600 font-black">{{ ucfirst($litespeedStatus) }}</span>
-                    @else
-                        <span class="text-slate-500 font-black">Unknown</span>
-                    @endif
-
-                    <p class="text-xs text-slate-500 mt-1">LSWS / OpenLiteSpeed / LSHTTPD</p>
-                </div>
-
             </div>
         </div>
 
@@ -992,7 +759,7 @@
             <div>
                 <h3 class="text-xl font-black">Security Alerts</h3>
                 <p class="text-sm text-slate-500">
-                    Abuse, firewall, email, SSH, LiteSpeed, service and disk issues.
+                    Abuse, firewall, email, SSH, LiteSpeed, service, disk and SentinelCore issues.
                 </p>
             </div>
 
@@ -1086,6 +853,13 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
             <div class="rounded-xl border p-4">
+                <h4 class="font-black text-slate-800">SentinelCore Smart Scan</h4>
+                <p class="text-sm text-slate-500 mt-1">
+                    Run website scan for exposed .env, composer files, package files, SQL dumps, missing headers and SSL issues.
+                </p>
+            </div>
+
+            <div class="rounded-xl border p-4">
                 <h4 class="font-black text-slate-800">Firewall Protection</h4>
                 <p class="text-sm text-slate-500 mt-1">
                     Keep only required ports open: 22, 80, 443, 2083, 2087, 7080 only when needed.
@@ -1100,16 +874,9 @@
             </div>
 
             <div class="rounded-xl border p-4">
-                <h4 class="font-black text-slate-800">Email Abuse Protection</h4>
-                <p class="text-sm text-slate-500 mt-1">
-                    Monitor Exim queue, suspicious forwarders, spam scripts and outgoing mail limits.
-                </p>
-            </div>
-
-            <div class="rounded-xl border p-4">
                 <h4 class="font-black text-slate-800">Customer File Protection</h4>
                 <p class="text-sm text-slate-500 mt-1">
-                    Keep daily backups, scan web directories, and restrict destructive terminal commands.
+                    Store sensitive files outside public folders and encrypt important backups with SentinelCore vault.
                 </p>
             </div>
 
@@ -1194,17 +961,5 @@
     </div>
 
 </div>
-
-<script>
-function toggleBox(id) {
-    const box = document.getElementById(id);
-
-    if (!box) {
-        return;
-    }
-
-    box.classList.toggle('hidden');
-}
-</script>
 
 @endsection
