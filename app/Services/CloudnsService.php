@@ -39,7 +39,7 @@ class CloudnsService
         $data = $response->json();
 
         if (!is_array($data)) {
-            throw new \Exception('Invalid ClouDNS response.');
+            throw new \Exception('Invalid ClouDNS response: ' . $response->body());
         }
 
         if (isset($data['status']) && strtolower((string) $data['status']) === 'failed') {
@@ -49,9 +49,18 @@ class CloudnsService
         return $data;
     }
 
-    public function listZones(): array
+    public function listZones(int $page = 1, int $rowsPerPage = 100, ?string $search = null): array
     {
-        return $this->request('/dns/list-zones');
+        $params = [
+            'page' => $page,
+            'rows-per-page' => $rowsPerPage,
+        ];
+
+        if (!empty($search)) {
+            $params['search'] = $search;
+        }
+
+        return $this->request('/dns/list-zones', $params);
     }
 
     public function records(string $domain): array
@@ -72,14 +81,6 @@ class CloudnsService
         ]);
     }
 
-    public function deleteRecord(string $domain, string $recordId): array
-    {
-        return $this->request('/dns/delete-record', [
-            'domain-name' => $domain,
-            'record-id' => $recordId,
-        ]);
-    }
-
     public function updateRecord(string $domain, string $recordId, string $type, string $host, string $record, int $ttl = 3600): array
     {
         return $this->request('/dns/mod-record', [
@@ -89,6 +90,14 @@ class CloudnsService
             'host' => $host,
             'record' => $record,
             'ttl' => $ttl,
+        ]);
+    }
+
+    public function deleteRecord(string $domain, string $recordId): array
+    {
+        return $this->request('/dns/delete-record', [
+            'domain-name' => $domain,
+            'record-id' => $recordId,
         ]);
     }
 
