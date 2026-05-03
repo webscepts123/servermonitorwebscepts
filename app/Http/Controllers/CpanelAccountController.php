@@ -36,18 +36,45 @@ class CpanelAccountController extends Controller
     | CREATE ACCOUNT PAGE
     |--------------------------------------------------------------------------
     */
-    public function create(Server $server)
+    public function create(\App\Models\Server $server)
     {
-        $packages = [];
         $error = null;
-
+        $packages = [];
+        $ips = [];
+    
         try {
-            $packages = $this->getPackages($server);
+            $whm = $this->whmRequest($server, 'listpkgs');
+    
+            if (!empty($whm['package'])) {
+                $packages = $whm['package'];
+            } elseif (!empty($whm['data']['pkg'])) {
+                $packages = $whm['data']['pkg'];
+            }
         } catch (\Throwable $e) {
-            $error = $e->getMessage();
+            $error = 'Unable to load packages: ' . $e->getMessage();
         }
-
-        return view('cpanel.accounts.create', compact('server', 'packages', 'error'));
+    
+        try {
+            $ipResponse = $this->whmRequest($server, 'listips');
+    
+            if (!empty($ipResponse['data']['ip'])) {
+                $ips = $ipResponse['data']['ip'];
+            } elseif (!empty($ipResponse['ip'])) {
+                $ips = $ipResponse['ip'];
+            } elseif (!empty($ipResponse['data']['ips'])) {
+                $ips = $ipResponse['data']['ips'];
+            }
+        } catch (\Throwable $e) {
+            // Keep page working even if WHM cannot return IP list.
+            $ips = [];
+        }
+    
+        return view('cpanel.accounts.create', compact(
+            'server',
+            'packages',
+            'ips',
+            'error'
+        ));
     }
 
     /*
