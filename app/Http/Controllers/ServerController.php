@@ -136,110 +136,445 @@ class ServerController extends Controller
     | QUICK CHECK
     |--------------------------------------------------------------------------
     */
-    public function checkNow(Server $server, SmsService $smsService)
-    {
-        $oldStatus = strtolower(trim($server->status ?? 'offline'));
+   /*
+|--------------------------------------------------------------------------
+| QUICK SERVER CHECK
+|--------------------------------------------------------------------------
+| Checks:
+| - SSH login
+| - Response time
+| - CPU
+| - RAM
+| - Disk
+| - Load average
+| - Apache / Nginx / MySQL / SSH
+| - LiteSpeed / OpenLiteSpeed
+| - Firewall
+| - Website status
+| - cPanel / WHM port
+| - Plesk port
+| - Sends SMS/email down + recovery alerts
+|--------------------------------------------------------------------------
+*/
+public function checkNow(Server $server, SmsService $smsService)
+{
+    $oldStatus = strtolower(trim($server->status ?? 'offline'));
 
-        try {
-            $startTime = microtime(true);
+    try {
+        $startTime = microtime(true);
 
-            $password = $this->getPassword($server);
+        $password = $this->getPassword($server);
 
-            $ssh = new SSH2($server->host, $server->ssh_port ?? 22);
-            $ssh->setTimeout(15);
+        $ssh = new \phpseclib3\Net\SSH2($server->host, $server->ssh_port ?? 22);
+        $ssh->setTimeout(20);
 
-            $sshOnline = $ssh->login($server->username, $password);
+        $sshOnline = $ssh->login($server->username, $password);
 
-            $responseTime = round((microtime(true) - $startTime) * 1000, 2);
+        $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
-            $cpu = null;
-            $ram = null;
-            $disk = null;
-            $load = null;
-            $services = [];
-            $firewallStatus = 'Unknown';
+        /*
+        |--------------------------------------------------------------------------
+        | Default values
+        |--------------------------------------------------------------------------
+        */
+        $cpu = null;
+        $ram = null;
+        $disk = null;
+        $load = null;
+        $services = [];
+        $firewallStatus = 'Unknown';
 
-            if ($sshOnline) {
-                $cpu = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8}'"));
-                $ram = trim($ssh->exec("free | awk '/Mem:/ {printf(\"%.0f\", $3/$2 * 100)}'"));
-                $disk = trim($ssh->exec("df -h / | awk 'NR==2 {print $5}' | sed 's/%//'"));
-                $load = trim($ssh->exec("uptime | awk -F'load average:' '{ print $2 }'"));
+        $websiteOnline = false;
+        $cpanelOnline = false;
+        $pleskOnline = false;
 
-                $services = [
-                    'web' => trim($ssh->exec("systemctl is-active apache2 2>/dev/null || systemctl is-active httpd 2>/dev/null || echo unknown")),
-                    'nginx' => trim($ssh->exec("systemctl is-active nginx 2>/dev/null || echo unknown")),
-                    'mysql' => trim($ssh->exec("systemctl is-active mysql 2>/dev/null || systemctl is-active mariadb 2>/dev/null || echo unknown")),
-                    'ssh' => trim($ssh->exec("systemctl is-active sshd 2>/dev/null || systemctl is-active ssh 2>/dev/null || echo unknown")),
-                ];
+        /*
+        |--------------------------------------------------------------------------
+        | Port / URL Checks
+        |--------------------------------------------------------------------------
+        */
+        $cpanelOnline = $this->isPortOpen($server->host, 2087, 5);
+        $pleskOnline = $this->isPortOpen($server->host, 8443, 5);
 
-                $firewallStatus = trim($ssh->exec("systemctl is-active firewalld 2>/dev/null || systemctl is-active csf 2>/dev/null || ufw status 2>/dev/null | head -n 1 || echo Unknown"));
-            }
-
-            $newStatus = $sshOnline ? 'online' : 'offline';
-
-            $checkData = [
-                'server_id' => $server->id,
-                'online' => $sshOnline,
-                'ssh_online' => $sshOnline,
-                'status' => ucfirst($newStatus),
-                'cpu_usage' => is_numeric($cpu) ? $cpu : null,
-                'ram_usage' => is_numeric($ram) ? $ram : null,
-                'disk_usage' => is_numeric($disk) ? $disk : null,
-                'load_average' => $load,
-                'services' => json_encode($services),
-                'checked_at' => now(),
-            ];
-
-            if (Schema::hasColumn('server_checks', 'response_time')) {
-                $checkData['response_time'] = $responseTime;
-            }
-
-            if (Schema::hasColumn('server_checks', 'firewall_status')) {
-                $checkData['firewall_status'] = $firewallStatus;
-            }
-
-            ServerCheck::create($checkData);
-
-            $server->update([
-                'status' => $newStatus,
-            ]);
-
-            if ($newStatus === 'offline' && $oldStatus !== 'offline') {
-                $this->sendDownAlerts($server->fresh(), $smsService);
-            }
-
-            if ($newStatus === 'online' && $oldStatus === 'offline') {
-                $this->sendRecoveryAlerts($server->fresh(), $smsService);
-            }
-
-            return back()->with('success', 'Server checked successfully.');
-
-        } catch (\Throwable $e) {
-            $server->update([
-                'status' => 'offline',
-            ]);
-
-            $checkData = [
-                'server_id' => $server->id,
-                'online' => false,
-                'ssh_online' => false,
-                'status' => 'Offline',
-                'checked_at' => now(),
-            ];
-
-            if (Schema::hasColumn('server_checks', 'response_time')) {
-                $checkData['response_time'] = null;
-            }
-
-            ServerCheck::create($checkData);
-
-            if ($oldStatus !== 'offline') {
-                $this->sendDownAlerts($server->fresh(), $smsService);
-            }
-
-            return back()->with('error', 'Server check failed: ' . $e->getMessage());
+        if (!empty($server->website_url)) {
+            $websiteOnline = $this->isWebsiteOnline($server->website_url);
+        } else {
+            $websiteOnline = $this->isPortOpen($server->host, 80, 5)
+                || $this->isPortOpen($server->host, 443, 5);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | SSH Server Metrics
+        |--------------------------------------------------------------------------
+        */
+        if ($sshOnline) {
+
+            /*
+            |--------------------------------------------------------------------------
+            | CPU Usage
+            |--------------------------------------------------------------------------
+            */
+            $cpu = trim($ssh->exec("
+                if command -v top >/dev/null 2>&1; then
+                    top -bn1 | grep 'Cpu(s)' | awk '{print 100 - $8}' | awk '{printf \"%.0f\", $1}'
+                else
+                    echo ''
+                fi
+            "));
+
+            /*
+            |--------------------------------------------------------------------------
+            | RAM Usage
+            |--------------------------------------------------------------------------
+            */
+            $ram = trim($ssh->exec("
+                free | awk '/Mem:/ {printf(\"%.0f\", $3/$2 * 100)}'
+            "));
+
+            /*
+            |--------------------------------------------------------------------------
+            | Disk Usage
+            |--------------------------------------------------------------------------
+            */
+            $disk = trim($ssh->exec("
+                df -h / | awk 'NR==2 {print $5}' | sed 's/%//'
+            "));
+
+            /*
+            |--------------------------------------------------------------------------
+            | Load Average
+            |--------------------------------------------------------------------------
+            */
+            $load = trim($ssh->exec("
+                uptime | awk -F'load average:' '{ print $2 }' | sed 's/^ *//'
+            "));
+
+            /*
+            |--------------------------------------------------------------------------
+            | Service Checks
+            |--------------------------------------------------------------------------
+            */
+            $services = [
+                'apache/httpd' => trim($ssh->exec("
+                    systemctl is-active apache2 2>/dev/null ||
+                    systemctl is-active httpd 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                'nginx' => trim($ssh->exec("
+                    systemctl is-active nginx 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                'mysql/mariadb' => trim($ssh->exec("
+                    systemctl is-active mysql 2>/dev/null ||
+                    systemctl is-active mariadb 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                'ssh' => trim($ssh->exec("
+                    systemctl is-active sshd 2>/dev/null ||
+                    systemctl is-active ssh 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                /*
+                |--------------------------------------------------------------------------
+                | LiteSpeed Services
+                |--------------------------------------------------------------------------
+                */
+                'lsws' => trim($ssh->exec("
+                    systemctl is-active lsws 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                'lshttpd' => trim($ssh->exec("
+                    systemctl is-active lshttpd 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                'openlitespeed' => trim($ssh->exec("
+                    systemctl is-active openlitespeed 2>/dev/null ||
+                    echo unknown
+                ")),
+
+                'litespeed' => trim($ssh->exec("
+                    systemctl is-active litespeed 2>/dev/null ||
+                    echo unknown
+                ")),
+            ];
+
+            /*
+            |--------------------------------------------------------------------------
+            | LiteSpeed Fallback Detection
+            |--------------------------------------------------------------------------
+            | Some LiteSpeed installs use lswsctrl without clean systemctl service.
+            |--------------------------------------------------------------------------
+            */
+            $lswsCtrlStatus = trim($ssh->exec("
+                if [ -x /usr/local/lsws/bin/lswsctrl ]; then
+                    /usr/local/lsws/bin/lswsctrl status 2>&1 | head -n 3
+                else
+                    echo ''
+                fi
+            "));
+
+            if (!empty($lswsCtrlStatus)) {
+                $services['lswsctrl'] = str_contains(strtolower($lswsCtrlStatus), 'running')
+                    ? 'active'
+                    : 'detected';
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Firewall Status
+            |--------------------------------------------------------------------------
+            */
+            $firewallStatus = trim($ssh->exec("
+                if systemctl is-active firewalld >/dev/null 2>&1; then
+                    echo 'firewalld active'
+                elif systemctl is-active csf >/dev/null 2>&1; then
+                    echo 'csf active'
+                elif command -v ufw >/dev/null 2>&1; then
+                    ufw status 2>/dev/null | head -n 1
+                elif command -v iptables >/dev/null 2>&1; then
+                    echo 'iptables available'
+                else
+                    echo 'Unknown'
+                fi
+            "));
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Server Status Logic
+        |--------------------------------------------------------------------------
+        | Server is online if SSH is online OR website is online OR panel is online.
+        |--------------------------------------------------------------------------
+        */
+        $newStatus = ($sshOnline || $websiteOnline || $cpanelOnline || $pleskOnline)
+            ? 'online'
+            : 'offline';
+
+        /*
+        |--------------------------------------------------------------------------
+        | Save Server Check
+        |--------------------------------------------------------------------------
+        */
+        $checkData = [
+            'server_id' => $server->id,
+            'online' => $newStatus === 'online',
+            'ssh_online' => $sshOnline,
+            'status' => ucfirst($newStatus),
+            'cpu_usage' => is_numeric($cpu) ? (float) $cpu : null,
+            'ram_usage' => is_numeric($ram) ? (float) $ram : null,
+            'disk_usage' => is_numeric($disk) ? (float) $disk : null,
+            'load_average' => $load,
+            'services' => json_encode($services),
+            'checked_at' => now(),
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Optional Columns
+        |--------------------------------------------------------------------------
+        | Prevents SQL errors if columns are missing.
+        |--------------------------------------------------------------------------
+        */
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'response_time')) {
+            $checkData['response_time'] = $responseTime;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'firewall_status')) {
+            $checkData['firewall_status'] = $firewallStatus;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'website_online')) {
+            $checkData['website_online'] = $websiteOnline;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'cpanel_online')) {
+            $checkData['cpanel_online'] = $cpanelOnline;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'plesk_online')) {
+            $checkData['plesk_online'] = $pleskOnline;
+        }
+
+        ServerCheck::create($checkData);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Update Server Main Status
+        |--------------------------------------------------------------------------
+        */
+        $server->update([
+            'status' => $newStatus,
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Disk Warning Alert
+        |--------------------------------------------------------------------------
+        */
+        $diskWarningPercent = (int) ($server->disk_warning_percent ?? 80);
+        $diskTransferPercent = (int) ($server->disk_transfer_percent ?? 90);
+
+        if (is_numeric($disk)) {
+            $diskValue = (int) $disk;
+
+            if ($diskValue >= $diskTransferPercent) {
+                $this->createSecurityAlert(
+                    $server,
+                    'disk',
+                    'danger',
+                    'Disk transfer threshold reached',
+                    "Disk usage is {$diskValue}%. Transfer threshold is {$diskTransferPercent}%."
+                );
+            } elseif ($diskValue >= $diskWarningPercent) {
+                $this->createSecurityAlert(
+                    $server,
+                    'disk',
+                    'warning',
+                    'Disk warning threshold reached',
+                    "Disk usage is {$diskValue}%. Warning threshold is {$diskWarningPercent}%."
+                );
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | LiteSpeed Alert
+        |--------------------------------------------------------------------------
+        */
+        $liteSpeedActive =
+            ($services['lsws'] ?? null) === 'active' ||
+            ($services['lshttpd'] ?? null) === 'active' ||
+            ($services['openlitespeed'] ?? null) === 'active' ||
+            ($services['litespeed'] ?? null) === 'active' ||
+            ($services['lswsctrl'] ?? null) === 'active';
+
+        if ($liteSpeedActive) {
+            $this->createSecurityAlert(
+                $server,
+                'litespeed',
+                'info',
+                'LiteSpeed detected active',
+                'LiteSpeed/OpenLiteSpeed is active on this server.'
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Down / Recovery Alerts
+        |--------------------------------------------------------------------------
+        */
+        if ($newStatus === 'offline' && $oldStatus !== 'offline') {
+            $this->sendDownAlerts($server->fresh(), $smsService);
+        }
+
+        if ($newStatus === 'online' && $oldStatus === 'offline') {
+            $this->sendRecoveryAlerts($server->fresh(), $smsService);
+        }
+
+        return back()->with(
+            'success',
+            'Server checked successfully. Status: ' . ucfirst($newStatus)
+        );
+
+    } catch (\Throwable $e) {
+
+        /*
+        |--------------------------------------------------------------------------
+        | If check crashes, mark offline and save failed check
+        |--------------------------------------------------------------------------
+        */
+        $server->update([
+            'status' => 'offline',
+        ]);
+
+        $checkData = [
+            'server_id' => $server->id,
+            'online' => false,
+            'ssh_online' => false,
+            'status' => 'Offline',
+            'checked_at' => now(),
+        ];
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'response_time')) {
+            $checkData['response_time'] = null;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'website_online')) {
+            $checkData['website_online'] = false;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'cpanel_online')) {
+            $checkData['cpanel_online'] = false;
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('server_checks', 'plesk_online')) {
+            $checkData['plesk_online'] = false;
+        }
+
+        ServerCheck::create($checkData);
+
+        if ($oldStatus !== 'offline') {
+            $this->sendDownAlerts($server->fresh(), $smsService);
+        }
+
+        return back()->with(
+            'error',
+            'Server check failed: ' . $e->getMessage()
+        );
     }
+}
+
+private function isPortOpen(string $host, int $port, int $timeout = 5): bool
+{
+    try {
+        $connection = @fsockopen($host, $port, $errno, $errstr, $timeout);
+
+        if ($connection) {
+            fclose($connection);
+            return true;
+        }
+
+        return false;
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
+private function isWebsiteOnline(string $url): bool
+{
+    try {
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 8,
+                'ignore_errors' => true,
+                'method' => 'GET',
+                'header' => "User-Agent: Webscepts-Monitor/1.0\r\n",
+            ],
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+            ],
+        ]);
+
+        $headers = @get_headers($url, true, $context);
+
+        if (!$headers || empty($headers[0])) {
+            return false;
+        }
+
+        return preg_match('/\s(200|201|202|204|301|302|303|307|308|401|403)\s/', $headers[0]) === 1;
+
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
 
     /*
     |--------------------------------------------------------------------------

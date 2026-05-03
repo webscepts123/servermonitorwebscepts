@@ -41,6 +41,17 @@
     $customerName = $server->customer_name ?? null;
     $customerEmail = $server->customer_email ?? null;
     $customerPhone = $server->customer_phone ?? null;
+
+    $litespeedStatus =
+        $services['lsws'] ??
+        $services['lshttpd'] ??
+        $services['openlitespeed'] ??
+        $services['litespeed'] ??
+        null;
+
+    $litespeedActive = strtolower(trim($litespeedStatus ?? '')) === 'active';
+
+    $panelType = strtolower($server->panel_type ?? 'auto');
 @endphp
 
 <div class="space-y-6">
@@ -48,45 +59,54 @@
     {{-- SESSION ALERTS --}}
     @if(session('success'))
         <div class="bg-green-100 border border-green-300 text-green-800 rounded-2xl p-4 font-semibold">
-            {{ session('success') }}
+            <i class="fa-solid fa-circle-check mr-2"></i>{{ session('success') }}
         </div>
     @endif
 
     @if(session('error'))
         <div class="bg-red-100 border border-red-300 text-red-800 rounded-2xl p-4 font-semibold">
-            {{ session('error') }}
+            <i class="fa-solid fa-circle-exclamation mr-2"></i>{{ session('error') }}
         </div>
     @endif
 
     {{-- SERVER HEADER --}}
-    <div class="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 rounded-3xl shadow-xl p-7 text-white">
-        <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+    <div class="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 rounded-3xl shadow-xl p-7 text-white">
+        <div class="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-blue-500/20 blur-3xl"></div>
+        <div class="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-red-500/10 blur-3xl"></div>
+
+        <div class="relative flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
 
             <div>
                 <div class="flex flex-wrap items-center gap-3">
-                    <h2 class="text-3xl font-black tracking-tight">
-                        {{ $server->name ?? 'Unknown Server' }}
-                    </h2>
+                    <div class="w-16 h-16 rounded-3xl bg-white/10 border border-white/20 flex items-center justify-center">
+                        <i class="fa-solid fa-server text-3xl"></i>
+                    </div>
+
+                    <div>
+                        <h2 class="text-3xl lg:text-4xl font-black tracking-tight">
+                            {{ $server->name ?? 'Unknown Server' }}
+                        </h2>
+
+                        <p class="text-slate-300 mt-1">
+                            {{ $server->host ?? 'No host' }} : {{ $server->ssh_port ?? 22 }}
+                        </p>
+                    </div>
 
                     @if($isOnline)
-                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400 text-green-200 font-bold">
+                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400 text-green-100 font-bold">
                             <i class="fa-solid fa-circle mr-1 text-xs"></i> Online
                         </span>
                     @else
-                        <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400 text-red-200 font-bold">
+                        <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400 text-red-100 font-bold">
                             <i class="fa-solid fa-circle mr-1 text-xs"></i> Offline
                         </span>
                     @endif
                 </div>
 
-                <p class="text-slate-300 mt-2">
-                    {{ $server->host ?? 'No host' }} : {{ $server->ssh_port ?? 22 }}
-                </p>
-
-                <p class="text-slate-400 text-sm mt-1">
+                <p class="text-slate-400 text-sm mt-4">
                     Website:
                     @if(!empty($server->website_url))
-                        <a href="{{ $server->website_url }}" target="_blank" class="text-blue-300 hover:underline">
+                        <a href="{{ $server->website_url }}" target="_blank" class="text-blue-300 hover:underline font-semibold">
                             {{ $server->website_url }}
                         </a>
                     @else
@@ -95,40 +115,58 @@
                 </p>
 
                 <div class="mt-4 flex flex-wrap gap-2">
+                    <span class="px-4 py-2 rounded-full bg-blue-500/20 border border-blue-400/40 text-blue-100 text-xs font-bold">
+                        Panel: {{ $panelType === 'cpanel' ? 'cPanel / WHM' : ($panelType === 'plesk' ? 'Plesk' : 'Auto Detect') }}
+                    </span>
+
                     @if($latest && $latest->ssh_online)
-                        <span class="px-4 py-2 rounded-full bg-blue-500/20 border border-blue-400 text-blue-200 font-semibold">
+                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-bold">
                             SSH Connected
                         </span>
                     @else
-                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400 text-slate-200 font-semibold">
+                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
                             SSH Unknown
                         </span>
                     @endif
 
                     @if($emailEnabled)
-                        <span class="px-4 py-2 rounded-full bg-purple-500/20 border border-purple-400 text-purple-200 font-semibold">
+                        <span class="px-4 py-2 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100 text-xs font-bold">
                             Email Alerts Enabled
                         </span>
                     @else
-                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400 text-slate-200 font-semibold">
+                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
                             Email Alerts Disabled
                         </span>
                     @endif
 
                     @if($smsEnabled)
-                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400 text-green-200 font-semibold">
+                        <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-bold">
                             SMS Alerts Enabled
                         </span>
                     @else
-                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400 text-slate-200 font-semibold">
+                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
                             SMS Alerts Disabled
+                        </span>
+                    @endif
+
+                    @if($litespeedActive)
+                        <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400/40 text-red-100 text-xs font-bold">
+                            LiteSpeed Active
+                        </span>
+                    @elseif($litespeedStatus)
+                        <span class="px-4 py-2 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-100 text-xs font-bold">
+                            LiteSpeed {{ ucfirst($litespeedStatus) }}
+                        </span>
+                    @else
+                        <span class="px-4 py-2 rounded-full bg-slate-500/20 border border-slate-400/40 text-slate-100 text-xs font-bold">
+                            LiteSpeed Unknown
                         </span>
                     @endif
                 </div>
             </div>
 
             {{-- ACTION BUTTONS --}}
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 w-full xl:w-auto">
+            <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 w-full xl:w-auto">
 
                 @if(Route::has('servers.checkNow'))
                     <form method="POST" action="{{ route('servers.checkNow', $server) }}" class="w-full">
@@ -148,11 +186,28 @@
                     </form>
                 @endif
 
+                @if(Route::has('servers.litespeed.index'))
+                    <a href="{{ route('servers.litespeed.index', $server) }}"
+                       class="w-full text-center px-4 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700 text-sm font-bold">
+                        <i class="fa-solid fa-bolt mr-1"></i> LiteSpeed
+                    </a>
+                @endif
+
+                @if(Route::has('servers.litespeed.activate'))
+                    <form method="POST" action="{{ route('servers.litespeed.activate', $server) }}" class="w-full">
+                        @csrf
+                        <button onclick="return confirm('Activate or restart LiteSpeed on this server?')"
+                                class="w-full px-4 py-3 rounded-xl bg-orange-600 text-white hover:bg-orange-700 text-sm font-bold">
+                            <i class="fa-solid fa-bolt-lightning mr-1"></i> Activate LS
+                        </button>
+                    </form>
+                @endif
+
                 @if(Route::has('sms.down'))
                     <form method="POST" action="{{ route('sms.down', $server) }}" class="w-full">
                         @csrf
                         <button onclick="return confirm('Send DOWN SMS alert to admin and customer?')"
-                                class="w-full px-4 py-3 rounded-xl bg-red-600 text-white hover:bg-red-700 text-sm font-bold">
+                                class="w-full px-4 py-3 rounded-xl bg-red-700 text-white hover:bg-red-800 text-sm font-bold">
                             <i class="fa-solid fa-message mr-1"></i> Down SMS
                         </button>
                     </form>
@@ -170,7 +225,7 @@
 
                 @if(Route::has('servers.cpanel.index'))
                     <a href="{{ route('servers.cpanel.index', $server) }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-orange-600 text-white hover:bg-orange-700 text-sm font-bold">
+                       class="w-full text-center px-4 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold">
                         <i class="fa-solid fa-users mr-1"></i> Accounts
                     </a>
                 @endif
@@ -184,7 +239,7 @@
 
                 @if(Route::has('servers.edit'))
                     <a href="{{ route('servers.edit', $server) }}"
-                       class="w-full text-center px-4 py-3 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-bold">
+                       class="w-full text-center px-4 py-3 rounded-xl bg-cyan-600 text-white hover:bg-cyan-700 text-sm font-bold">
                         <i class="fa-solid fa-pen mr-1"></i> Edit
                     </a>
                 @endif
@@ -201,56 +256,140 @@
         </div>
     </div>
 
+    {{-- QUICK STATS --}}
+    <div class="grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-5">
+
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-slate-500 text-sm font-semibold">CPU Usage</p>
+                    <h3 class="text-3xl font-black mt-2">{{ $latest->cpu_usage ?? '-' }}%</h3>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+            </div>
+
+            <div class="h-2 bg-slate-200 rounded-full mt-4">
+                <div class="h-2 bg-blue-600 rounded-full" style="width: {{ min($cpu, 100) }}%"></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-slate-500 text-sm font-semibold">RAM Usage</p>
+                    <h3 class="text-3xl font-black mt-2">{{ $latest->ram_usage ?? '-' }}%</h3>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                    <i class="fa-solid fa-memory"></i>
+                </div>
+            </div>
+
+            <div class="h-2 bg-slate-200 rounded-full mt-4">
+                <div class="h-2 bg-purple-600 rounded-full" style="width: {{ min($ram, 100) }}%"></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-slate-500 text-sm font-semibold">Disk Usage</p>
+                    <h3 class="text-3xl font-black mt-2 {{ $disk >= 90 ? 'text-red-600' : 'text-slate-800' }}">
+                        {{ $latest->disk_usage ?? '-' }}%
+                    </h3>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center">
+                    <i class="fa-solid fa-hard-drive"></i>
+                </div>
+            </div>
+
+            <div class="h-2 bg-slate-200 rounded-full mt-4">
+                <div class="h-2 {{ $disk >= 90 ? 'bg-red-600' : 'bg-orange-500' }} rounded-full"
+                     style="width: {{ min($disk, 100) }}%"></div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-slate-500 text-sm font-semibold">Response Time</p>
+                    <h3 class="text-3xl font-black mt-2">
+                        {{ $latest->response_time ?? 'N/A' }}
+                        @if(!empty($latest->response_time))
+                            <span class="text-base">ms</span>
+                        @endif
+                    </h3>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center">
+                    <i class="fa-solid fa-gauge-high"></i>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-500 mt-3">
+                Last check: {{ $latest?->checked_at ?? 'No checks yet' }}
+            </p>
+        </div>
+
+    </div>
+
     {{-- SERVER + CUSTOMER ALERT DETAILS --}}
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
-        <div class="bg-white rounded-2xl shadow p-6">
-            <h3 class="text-xl font-bold text-slate-800 mb-4">Server Info</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+            <h3 class="text-xl font-black text-slate-800 mb-4">Server Info</h3>
 
             <div class="space-y-3 text-sm">
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">Host</span>
-                    <span class="font-semibold text-slate-800 break-all">{{ $server->host ?? 'N/A' }}</span>
+                    <span class="font-bold text-slate-800 break-all">{{ $server->host ?? 'N/A' }}</span>
                 </div>
 
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">SSH Port</span>
-                    <span class="font-semibold text-slate-800">{{ $server->ssh_port ?? 22 }}</span>
+                    <span class="font-bold text-slate-800">{{ $server->ssh_port ?? 22 }}</span>
                 </div>
 
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">Username</span>
-                    <span class="font-semibold text-slate-800">{{ $server->username ?? 'N/A' }}</span>
+                    <span class="font-bold text-slate-800">{{ $server->username ?? 'N/A' }}</span>
+                </div>
+
+                <div class="flex justify-between gap-4">
+                    <span class="text-slate-500">Panel Type</span>
+                    <span class="font-bold text-slate-800">
+                        {{ $panelType === 'cpanel' ? 'cPanel / WHM' : ($panelType === 'plesk' ? 'Plesk' : 'Auto Detect') }}
+                    </span>
                 </div>
 
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">Status</span>
-                    <span class="font-bold {{ $isOnline ? 'text-green-600' : 'text-red-600' }}">
+                    <span class="font-black {{ $isOnline ? 'text-green-600' : 'text-red-600' }}">
                         {{ $isOnline ? 'Online' : 'Offline' }}
                     </span>
                 </div>
 
                 <div class="flex justify-between gap-4">
                     <span class="text-slate-500">Last Checked</span>
-                    <span class="font-semibold text-slate-800">
+                    <span class="font-bold text-slate-800">
                         {{ $latest?->checked_at ?? $latest?->created_at?->diffForHumans() ?? 'No checks yet' }}
                     </span>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow p-6">
-            <h3 class="text-xl font-bold text-slate-800 mb-4">Admin Alerts</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+            <h3 class="text-xl font-black text-slate-800 mb-4">Admin Alerts</h3>
 
             <div class="space-y-3 text-sm">
                 <div>
                     <p class="text-slate-500">Admin Email</p>
-                    <p class="font-semibold text-slate-800 break-all">{{ $adminEmail ?? 'Not set' }}</p>
+                    <p class="font-bold text-slate-800 break-all">{{ $adminEmail ?? 'Not set' }}</p>
                 </div>
 
                 <div>
                     <p class="text-slate-500">Admin Phone</p>
-                    <p class="font-semibold text-slate-800">{{ $adminPhone ?? 'Not set' }}</p>
+                    <p class="font-bold text-slate-800">{{ $adminPhone ?? 'Not set' }}</p>
                 </div>
 
                 <div class="flex flex-wrap gap-2 pt-2">
@@ -265,39 +404,105 @@
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow p-6">
-            <h3 class="text-xl font-bold text-slate-800 mb-4">Customer Alerts</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+            <h3 class="text-xl font-black text-slate-800 mb-4">Customer Alerts</h3>
 
             <div class="space-y-3 text-sm">
                 <div>
                     <p class="text-slate-500">Customer Name</p>
-                    <p class="font-semibold text-slate-800">{{ $customerName ?? 'Not set' }}</p>
+                    <p class="font-bold text-slate-800">{{ $customerName ?? 'Not set' }}</p>
                 </div>
 
                 <div>
                     <p class="text-slate-500">Customer Email</p>
-                    <p class="font-semibold text-slate-800 break-all">{{ $customerEmail ?? 'Not set' }}</p>
+                    <p class="font-bold text-slate-800 break-all">{{ $customerEmail ?? 'Not set' }}</p>
                 </div>
 
                 <div>
                     <p class="text-slate-500">Customer Phone</p>
-                    <p class="font-semibold text-slate-800">{{ $customerPhone ?? 'Not set' }}</p>
+                    <p class="font-bold text-slate-800">{{ $customerPhone ?? 'Not set' }}</p>
                 </div>
             </div>
         </div>
 
     </div>
 
+    {{-- LITESPEED SUMMARY --}}
+    <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
+            <div>
+                <h3 class="text-2xl font-black text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-red-600"></i>
+                    LiteSpeed Status
+                </h3>
+                <p class="text-sm text-slate-500">
+                    Manage LSWS / OpenLiteSpeed service, WebAdmin, ports, config test and logs.
+                </p>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+                @if(Route::has('servers.litespeed.index'))
+                    <a href="{{ route('servers.litespeed.index', $server) }}"
+                       class="px-5 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black">
+                        Open LiteSpeed Manager
+                    </a>
+                @endif
+
+                @if(Route::has('servers.litespeed.restart'))
+                    <form method="POST" action="{{ route('servers.litespeed.restart', $server) }}">
+                        @csrf
+                        <button onclick="return confirm('Restart LiteSpeed on this server?')"
+                                class="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-700 text-white font-black">
+                            Restart LS
+                        </button>
+                    </form>
+                @endif
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+            <div class="rounded-2xl border p-4">
+                <p class="text-sm text-slate-500 font-semibold">LSWS</p>
+                <h4 class="text-xl font-black mt-1 {{ ($services['lsws'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
+                    {{ ucfirst($services['lsws'] ?? 'unknown') }}
+                </h4>
+            </div>
+
+            <div class="rounded-2xl border p-4">
+                <p class="text-sm text-slate-500 font-semibold">LSHTTPD</p>
+                <h4 class="text-xl font-black mt-1 {{ ($services['lshttpd'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
+                    {{ ucfirst($services['lshttpd'] ?? 'unknown') }}
+                </h4>
+            </div>
+
+            <div class="rounded-2xl border p-4">
+                <p class="text-sm text-slate-500 font-semibold">OpenLiteSpeed</p>
+                <h4 class="text-xl font-black mt-1 {{ ($services['openlitespeed'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
+                    {{ ucfirst($services['openlitespeed'] ?? 'unknown') }}
+                </h4>
+            </div>
+
+            <div class="rounded-2xl border p-4">
+                <p class="text-sm text-slate-500 font-semibold">LiteSpeed</p>
+                <h4 class="text-xl font-black mt-1 {{ ($services['litespeed'] ?? '') === 'active' ? 'text-green-600' : 'text-slate-700' }}">
+                    {{ ucfirst($services['litespeed'] ?? 'unknown') }}
+                </h4>
+            </div>
+
+        </div>
+    </div>
+
     {{-- MANUAL SMS --}}
     @if(Route::has('sms.send'))
-        <div class="bg-white rounded-2xl shadow p-6">
-            <h3 class="text-xl font-bold text-slate-800 mb-4">Send Manual SMS</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+            <h3 class="text-xl font-black text-slate-800 mb-4">Send Manual SMS</h3>
 
             <form method="POST" action="{{ route('sms.send') }}" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 @csrf
 
                 <div>
-                    <label class="font-semibold text-slate-700">Phone Number</label>
+                    <label class="font-bold text-slate-700">Phone Number</label>
                     <input type="text"
                            name="phone"
                            value="{{ old('phone', $customerPhone ?? $adminPhone ?? '') }}"
@@ -307,7 +512,7 @@
                 </div>
 
                 <div class="lg:col-span-2">
-                    <label class="font-semibold text-slate-700">Message</label>
+                    <label class="font-bold text-slate-700">Message</label>
                     <input type="text"
                            name="message"
                            value="{{ old('message', $isOnline ? 'Webscept: '.$server->name.' is online.' : 'Webscept Alert: '.$server->name.' is offline.') }}"
@@ -325,106 +530,75 @@
         </div>
     @endif
 
-    {{-- STATS --}}
-    <div class="grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-5">
-
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">CPU Usage</p>
-            <h3 class="text-3xl font-bold mt-2">{{ $latest->cpu_usage ?? '-' }}%</h3>
-            <div class="h-2 bg-slate-200 rounded-full mt-4">
-                <div class="h-2 bg-blue-600 rounded-full" style="width: {{ min($cpu, 100) }}%"></div>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">RAM Usage</p>
-            <h3 class="text-3xl font-bold mt-2">{{ $latest->ram_usage ?? '-' }}%</h3>
-            <div class="h-2 bg-slate-200 rounded-full mt-4">
-                <div class="h-2 bg-purple-600 rounded-full" style="width: {{ min($ram, 100) }}%"></div>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">Disk Usage</p>
-            <h3 class="text-3xl font-bold mt-2 {{ $disk >= 90 ? 'text-red-600' : 'text-slate-800' }}">
-                {{ $latest->disk_usage ?? '-' }}%
-            </h3>
-            <div class="h-2 bg-slate-200 rounded-full mt-4">
-                <div class="h-2 {{ $disk >= 90 ? 'bg-red-600' : 'bg-orange-500' }} rounded-full"
-                     style="width: {{ min($disk, 100) }}%"></div>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">Response Time</p>
-            <h3 class="text-3xl font-bold mt-2">
-                {{ $latest->response_time ?? 'N/A' }}
-                @if(!empty($latest->response_time))
-                    <span class="text-base">ms</span>
-                @endif
-            </h3>
-            <p class="text-xs text-slate-500 mt-2">
-                Last check: {{ $latest?->checked_at ?? 'No checks yet' }}
-            </p>
-        </div>
-
-    </div>
-
     {{-- PANEL STATUS + SERVICES --}}
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
-        <div class="bg-white rounded-2xl shadow p-6">
-            <h3 class="text-xl font-bold mb-4">Panel & Website Status</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+            <h3 class="text-xl font-black mb-4">Panel & Website Status</h3>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                 <div class="rounded-xl border p-4">
-                    <p class="font-semibold">cPanel / WHM</p>
+                    <p class="font-bold">cPanel / WHM</p>
                     @if($latest && !empty($latest->cpanel_online))
-                        <span class="text-green-600 font-bold">Online</span>
+                        <span class="text-green-600 font-black">Online</span>
                     @else
-                        <span class="text-red-600 font-bold">Offline / Unknown</span>
+                        <span class="text-red-600 font-black">Offline / Unknown</span>
                     @endif
                     <p class="text-xs text-slate-500 mt-1">Port 2087</p>
                 </div>
 
                 <div class="rounded-xl border p-4">
-                    <p class="font-semibold">Plesk</p>
+                    <p class="font-bold">Plesk</p>
                     @if($latest && !empty($latest->plesk_online))
-                        <span class="text-green-600 font-bold">Online</span>
+                        <span class="text-green-600 font-black">Online</span>
                     @else
-                        <span class="text-slate-500 font-bold">Not Detected</span>
+                        <span class="text-slate-500 font-black">Not Detected</span>
                     @endif
                     <p class="text-xs text-slate-500 mt-1">Port 8443</p>
                 </div>
 
                 <div class="rounded-xl border p-4">
-                    <p class="font-semibold">Website</p>
+                    <p class="font-bold">Website</p>
                     @if($latest && !empty($latest->website_online))
-                        <span class="text-green-600 font-bold">Online</span>
+                        <span class="text-green-600 font-black">Online</span>
                     @elseif($isOnline)
-                        <span class="text-yellow-600 font-bold">Server Online / Website Unknown</span>
+                        <span class="text-yellow-600 font-black">Server Online / Website Unknown</span>
                     @else
-                        <span class="text-red-600 font-bold">Offline</span>
+                        <span class="text-red-600 font-black">Offline</span>
                     @endif
                     <p class="text-xs text-slate-500 mt-1">Port 80 / 443</p>
                 </div>
 
                 <div class="rounded-xl border p-4">
-                    <p class="font-semibold">SSH</p>
+                    <p class="font-bold">SSH</p>
                     @if($latest && !empty($latest->ssh_online))
-                        <span class="text-green-600 font-bold">Connected</span>
+                        <span class="text-green-600 font-black">Connected</span>
                     @else
-                        <span class="text-red-600 font-bold">Failed / Unknown</span>
+                        <span class="text-red-600 font-black">Failed / Unknown</span>
                     @endif
                     <p class="text-xs text-slate-500 mt-1">Port {{ $server->ssh_port ?? 22 }}</p>
+                </div>
+
+                <div class="rounded-xl border p-4 md:col-span-2">
+                    <p class="font-bold">LiteSpeed</p>
+
+                    @if($litespeedActive)
+                        <span class="text-green-600 font-black">Active</span>
+                    @elseif($litespeedStatus)
+                        <span class="text-red-600 font-black">{{ ucfirst($litespeedStatus) }}</span>
+                    @else
+                        <span class="text-slate-500 font-black">Unknown</span>
+                    @endif
+
+                    <p class="text-xs text-slate-500 mt-1">LSWS / OpenLiteSpeed / LSHTTPD</p>
                 </div>
 
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow p-6">
-            <h3 class="text-xl font-bold mb-4">Services</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+            <h3 class="text-xl font-black mb-4">Services</h3>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 @forelse($services as $name => $status)
@@ -433,14 +607,14 @@
                     @endphp
 
                     <div class="rounded-xl border p-4">
-                        <p class="font-semibold uppercase">{{ $name }}</p>
+                        <p class="font-black uppercase">{{ $name }}</p>
 
                         @if($serviceStatus === 'active')
-                            <span class="text-green-600 font-bold">Active</span>
+                            <span class="text-green-600 font-black">Active</span>
                         @elseif($serviceStatus === 'unknown' || $serviceStatus === '')
-                            <span class="text-slate-500 font-bold">Unknown</span>
+                            <span class="text-slate-500 font-black">Unknown</span>
                         @else
-                            <span class="text-red-600 font-bold">{{ ucfirst($serviceStatus) }}</span>
+                            <span class="text-red-600 font-black">{{ ucfirst($serviceStatus) }}</span>
                         @endif
                     </div>
                 @empty
@@ -454,37 +628,37 @@
     {{-- SECURITY SUMMARY --}}
     <div class="grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-5">
 
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">Firewall Status</p>
-            <h3 class="text-lg font-bold mt-2 break-words">
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <p class="text-slate-500 text-sm font-semibold">Firewall Status</p>
+            <h3 class="text-lg font-black mt-2 break-words">
                 {{ $latest->firewall_status ?? 'Unknown' }}
             </h3>
         </div>
 
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">Danger Alerts</p>
-            <h3 class="text-3xl font-bold text-red-600 mt-2">{{ $dangerCount }}</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <p class="text-slate-500 text-sm font-semibold">Danger Alerts</p>
+            <h3 class="text-3xl font-black text-red-600 mt-2">{{ $dangerCount }}</h3>
         </div>
 
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">Warning Alerts</p>
-            <h3 class="text-3xl font-bold text-yellow-600 mt-2">{{ $warningCount }}</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <p class="text-slate-500 text-sm font-semibold">Warning Alerts</p>
+            <h3 class="text-3xl font-black text-yellow-600 mt-2">{{ $warningCount }}</h3>
         </div>
 
-        <div class="bg-white rounded-2xl shadow p-5">
-            <p class="text-slate-500 text-sm">Open Alerts</p>
-            <h3 class="text-3xl font-bold mt-2">{{ $openAlerts }}</h3>
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-5">
+            <p class="text-slate-500 text-sm font-semibold">Open Alerts</p>
+            <h3 class="text-3xl font-black mt-2">{{ $openAlerts }}</h3>
         </div>
 
     </div>
 
     {{-- SECURITY ALERTS --}}
-    <div class="bg-white rounded-2xl shadow overflow-hidden">
+    <div class="bg-white rounded-3xl shadow border border-slate-100 overflow-hidden">
         <div class="px-6 py-5 border-b flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
             <div>
-                <h3 class="text-xl font-bold">Security Alerts</h3>
+                <h3 class="text-xl font-black">Security Alerts</h3>
                 <p class="text-sm text-slate-500">
-                    Abuse, firewall, email, SSH, service and disk issues.
+                    Abuse, firewall, email, SSH, LiteSpeed, service and disk issues.
                 </p>
             </div>
 
@@ -528,7 +702,7 @@
                                     @endif
                                 </div>
 
-                                <h4 class="font-bold text-slate-800 mt-3 break-words">
+                                <h4 class="font-black text-slate-800 mt-3 break-words">
                                     {{ $alert->title ?? 'Security Alert' }}
                                 </h4>
 
@@ -537,7 +711,7 @@
                                 </p>
                             </div>
 
-                            <span class="text-sm text-blue-600 font-semibold">
+                            <span class="text-sm text-blue-600 font-bold">
                                 View Details
                             </span>
                         </div>
@@ -572,34 +746,34 @@
     </div>
 
     {{-- RECOMMENDED ACTIONS --}}
-    <div class="bg-white rounded-2xl shadow p-6">
-        <h3 class="text-xl font-bold mb-4">Recommended Security Actions</h3>
+    <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <h3 class="text-xl font-black mb-4">Recommended Security Actions</h3>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
             <div class="rounded-xl border p-4">
-                <h4 class="font-bold text-slate-800">Firewall Protection</h4>
+                <h4 class="font-black text-slate-800">Firewall Protection</h4>
                 <p class="text-sm text-slate-500 mt-1">
-                    Keep only required ports open: 22, 80, 443, 2083, 2087. Block unused public ports.
+                    Keep only required ports open: 22, 80, 443, 2083, 2087, 7080 only when needed.
                 </p>
             </div>
 
             <div class="rounded-xl border p-4">
-                <h4 class="font-bold text-slate-800">Email Abuse Protection</h4>
+                <h4 class="font-black text-slate-800">LiteSpeed Protection</h4>
+                <p class="text-sm text-slate-500 mt-1">
+                    Protect WebAdmin on port 7080 with strong password and IP restrictions.
+                </p>
+            </div>
+
+            <div class="rounded-xl border p-4">
+                <h4 class="font-black text-slate-800">Email Abuse Protection</h4>
                 <p class="text-sm text-slate-500 mt-1">
                     Monitor Exim queue, suspicious forwarders, spam scripts and outgoing mail limits.
                 </p>
             </div>
 
             <div class="rounded-xl border p-4">
-                <h4 class="font-bold text-slate-800">SSH Security</h4>
-                <p class="text-sm text-slate-500 mt-1">
-                    Use key login, disable password login if possible, and install brute-force protection.
-                </p>
-            </div>
-
-            <div class="rounded-xl border p-4">
-                <h4 class="font-bold text-slate-800">Customer File Protection</h4>
+                <h4 class="font-black text-slate-800">Customer File Protection</h4>
                 <p class="text-sm text-slate-500 mt-1">
                     Keep daily backups, scan web directories, and restrict destructive terminal commands.
                 </p>
@@ -609,9 +783,9 @@
     </div>
 
     {{-- RECENT CHECKS --}}
-    <div class="bg-white rounded-2xl shadow overflow-hidden">
+    <div class="bg-white rounded-3xl shadow border border-slate-100 overflow-hidden">
         <div class="px-6 py-5 border-b">
-            <h3 class="text-xl font-bold">Recent Checks</h3>
+            <h3 class="text-xl font-black">Recent Checks</h3>
         </div>
 
         <div class="overflow-x-auto">
@@ -642,11 +816,11 @@
 
                             <td class="p-4">
                                 @if($checkOnline)
-                                    <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold">
+                                    <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-bold">
                                         Online
                                     </span>
                                 @else
-                                    <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-sm font-semibold">
+                                    <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-sm font-bold">
                                         Offline
                                     </span>
                                 @endif
@@ -654,9 +828,9 @@
 
                             <td class="p-4">
                                 @if(!empty($check->ssh_online))
-                                    <span class="text-green-600 font-bold">Connected</span>
+                                    <span class="text-green-600 font-black">Connected</span>
                                 @else
-                                    <span class="text-red-600 font-bold">Failed</span>
+                                    <span class="text-red-600 font-black">Failed</span>
                                 @endif
                             </td>
 
