@@ -508,62 +508,61 @@ Route::middleware(['auth'])->group(function () {
                 ->name('rotate.passwords');
         });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Admin Developer Management Routes
-    |--------------------------------------------------------------------------
-    | Main admin panel:
-    | https://systemmonitor.webscepts.com/developers/cpanel-import
-    |--------------------------------------------------------------------------
-    */
+/*
+|--------------------------------------------------------------------------
+| Admin Developer Management Routes
+|--------------------------------------------------------------------------
+| Main admin panel:
+| https://systemmonitor.webscepts.com/developers/cpanel-import
+|--------------------------------------------------------------------------
+*/
 
-    Route::prefix('developers')
-        ->name('developers.')
-        ->group(function () {
+Route::prefix('developers')
+    ->name('developers.')
+    ->group(function () {
 
-            Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-                ->name('workspace');
+        Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
+            ->name('workspace');
 
-            Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
-                ->name('git.pull');
+        Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
+            ->name('git.pull');
 
-            Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
-                ->name('clear.cache');
+        Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
+            ->name('clear.cache');
 
-            Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
-                ->name('composer.dump');
+        Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
+            ->name('composer.dump');
 
-            Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
-                ->name('npm.build');
+        Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
+            ->name('npm.build');
 
-            Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
-                ->name('open.folder');
+        Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
+            ->name('open.folder');
 
-            Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
-                ->name('env.example');
+        Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
+            ->name('env.example');
 
-            Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
-                ->name('cpanel.import');
+        Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
+            ->name('cpanel.import');
 
-            Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
-                ->name('cpanel.sync');
+        Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
+            ->name('cpanel.sync');
 
-                Route::post('/cpanel-login-import', [DeveloperCpanelImportController::class, 'importSingleCpanelLogin'])
-    ->name('cpanel.login.import');
+        Route::post('/cpanel-login-import', [DeveloperCpanelImportController::class, 'importSingleCpanelLogin'])
+            ->name('cpanel.login.import');
 
-            Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
-                ->name('cpanel.bulk.import');
+        Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
+            ->name('cpanel.bulk.import');
 
-            Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
-                ->name('reset.password');
+        Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
+            ->name('reset.password');
 
-            Route::post('/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
-                ->name('toggle');
+        Route::post('/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
+            ->name('toggle');
 
-            Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
-                ->name('destroy');
-        });
-
+        Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
+            ->name('destroy');
+    });
     /*
     |--------------------------------------------------------------------------
     | Logout

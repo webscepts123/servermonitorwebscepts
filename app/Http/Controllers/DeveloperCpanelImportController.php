@@ -35,13 +35,17 @@ class DeveloperCpanelImportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Fetch all cPanel accounts from selected server
+    | Fetch cPanel Accounts From WHM
     |--------------------------------------------------------------------------
-    | Uses Server model:
-    | - host / ip
-    | - root username / WHM username
-    | - root password / WHM password
-    | - WHM token if available
+    | Uses selected Server model:
+    | - host / ip / hostname
+    | - whm_username
+    | - whm_token first
+    | - password fallback
+    |
+    | IMPORTANT:
+    | Normal cPanel username/password cannot use WHM listaccts.
+    | Fetch Users needs root/reseller WHM API token or root/reseller WHM password.
     |--------------------------------------------------------------------------
     */
     public function sync(Request $request)
@@ -71,7 +75,7 @@ class DeveloperCpanelImportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Import selected WHM/cPanel users to Developer Codes
+    | Bulk Import Selected cPanel Users To Developer Codes
     |--------------------------------------------------------------------------
     */
     public function bulkImport(Request $request)
@@ -111,12 +115,18 @@ class DeveloperCpanelImportController extends Controller
                 $contactEmail = $cpanelUsername . '@developer.local';
             }
 
-            $framework = $account['framework'] ?? 'custom';
+            $framework = trim($account['framework'] ?? 'custom') ?: 'custom';
             $frameworkConfig = $this->frameworkDefaults($framework, $cpanelUsername, $domain);
 
             $projectRoot = trim($account['project_root'] ?? '') ?: $frameworkConfig['project_root'];
             $allowedPath = $projectRoot ?: ('/home/' . $cpanelUsername);
 
+            /*
+            |--------------------------------------------------------------------------
+            | WHM cannot reveal existing cPanel passwords.
+            | So Developer Codes generates its own temporary password.
+            |--------------------------------------------------------------------------
+            */
             $temporaryPassword = Str::password(16);
 
             DeveloperUser::updateOrCreate(
@@ -182,10 +192,10 @@ class DeveloperCpanelImportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Import one cPanel login manually
+    | Import One Normal cPanel Login
     |--------------------------------------------------------------------------
-    | Uses selected server host from Server model.
-    | User enters only cPanel username/password.
+    | This is for when you only have one cPanel username/password.
+    | It does NOT fetch all accounts.
     |--------------------------------------------------------------------------
     */
     public function importSingleCpanelLogin(Request $request)
@@ -235,13 +245,19 @@ class DeveloperCpanelImportController extends Controller
             ?: ($accountInfo['email'] ?? null)
             ?: $cpanelUsername . '@developer.local';
 
-        $framework = $data['framework'] ?? 'custom';
+        $framework = trim($data['framework'] ?? 'custom') ?: 'custom';
         $frameworkConfig = $this->frameworkDefaults($framework, $cpanelUsername, $domain);
 
         $projectRoot = $data['project_root']
             ?: $frameworkConfig['project_root']
             ?: '/home/' . $cpanelUsername . '/public_html';
 
+        /*
+        |--------------------------------------------------------------------------
+        | For single cPanel import, use the same cPanel password
+        | for Developer Codes login, as requested.
+        |--------------------------------------------------------------------------
+        */
         DeveloperUser::updateOrCreate(
             [
                 'cpanel_username' => $cpanelUsername,
@@ -253,13 +269,6 @@ class DeveloperCpanelImportController extends Controller
                 'contact_email' => $contactEmail,
                 'cpanel_domain' => $domain,
 
-                /*
-                |--------------------------------------------------------------------------
-                | Developer Codes password
-                |--------------------------------------------------------------------------
-                | This uses same cPanel password for Developer Codes login.
-                |--------------------------------------------------------------------------
-                */
                 'password' => bcrypt($cpanelPassword),
                 'temporary_password' => Crypt::encryptString($cpanelPassword),
                 'password_must_change' => false,
@@ -306,6 +315,11 @@ class DeveloperCpanelImportController extends Controller
             ]);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reset Developer Password
+    |--------------------------------------------------------------------------
+    */
     public function resetPassword(DeveloperUser $developer)
     {
         $temporaryPassword = Str::password(16);
@@ -350,7 +364,7 @@ class DeveloperCpanelImportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | WHM account fetch using Server model credentials
+    | Fetch WHM Accounts
     |--------------------------------------------------------------------------
     */
     private function fetchCpanelAccounts(Server $server): array
@@ -367,25 +381,33 @@ class DeveloperCpanelImportController extends Controller
         }
 
         if (!$username) {
-            throw new \Exception('Server root/WHM username is missing.');
+            throw new \Exception('WHM username is missing. Set whm_username=root on the server record.');
         }
 
         if (!$token && !$password) {
-            throw new \Exception('Server root/WHM password or WHM API token is missing.');
+            throw new \Exception('WHM API token or WHM/root password is missing on this server record.');
         }
 
         $url = 'https://' . $host . ':2087/json-api/listaccts';
 
         $request = Http::withoutVerifying()
-            ->timeout(45)
+            ->timeout(60)
             ->acceptJson()
             ->withOptions([
                 'verify' => false,
+                'connect_timeout' => 20,
             ]);
 
+        /*
+        |--------------------------------------------------------------------------
+        | Token must be a WHM API token from root/reseller.
+        | Format:
+        | Authorization: whm root:TOKEN
+        |--------------------------------------------------------------------------
+        */
         if ($token) {
             $request = $request->withHeaders([
-                'Authorization' => 'whm ' . $username . ':' . $token,
+                'Authorization' => 'whm ' . $username . ':' . trim($token),
             ]);
         } else {
             $request = $request->withBasicAuth($username, $password);
@@ -397,11 +419,20 @@ class DeveloperCpanelImportController extends Controller
 
         if (!$response->successful()) {
             throw new \Exception(
-                'WHM API failed. HTTP ' . $response->status() . ' - ' . Str::limit($response->body(), 300)
+                'WHM API failed. HTTP ' . $response->status() . ' - ' . Str::limit($response->body(), 500)
             );
         }
 
         $json = $response->json();
+
+        $metadataResult = data_get($json, 'metadata.result');
+
+        if ((string) $metadataResult === '0') {
+            throw new \Exception(
+                'WHM API denied request: ' .
+                (data_get($json, 'metadata.reason') ?: data_get($json, 'cpanelresult.error') ?: 'Access denied')
+            );
+        }
 
         $rawAccounts = data_get($json, 'data.acct', []);
 
@@ -427,7 +458,6 @@ class DeveloperCpanelImportController extends Controller
                 $documentRoot = $home . '/public_html';
 
                 $framework = $this->guessFrameworkFromAccount($domain);
-
                 $defaults = $this->frameworkDefaults($framework, $user, $domain);
 
                 return [
@@ -474,7 +504,7 @@ class DeveloperCpanelImportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Single cPanel API check
+    | Validate One cPanel Login
     |--------------------------------------------------------------------------
     */
     private function fetchSingleCpanelAccountInfo(string $cpanelUrl, string $username, string $password): array
@@ -495,6 +525,12 @@ class DeveloperCpanelImportController extends Controller
 
         $json = $response->json();
 
+        $status = data_get($json, 'status');
+
+        if ((string) $status === '0') {
+            throw new \Exception(data_get($json, 'errors.0') ?: 'cPanel API access denied.');
+        }
+
         $email = data_get($json, 'data.email')
             ?: data_get($json, 'data.contact_email')
             ?: data_get($json, 'data.second_email');
@@ -507,43 +543,56 @@ class DeveloperCpanelImportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Get server credentials from Server model
-    |--------------------------------------------------------------------------
-    | Supports different possible column names safely.
+    | Read Server Credentials Safely
     |--------------------------------------------------------------------------
     */
     private function serverCredentials(Server $server): array
     {
+        $host = $this->serverValue($server, [
+            'host',
+            'ip',
+            'ip_address',
+            'server_ip',
+            'hostname',
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | IMPORTANT:
+        | whm_username should be root or reseller.
+        | Do not let normal cPanel username override whm_username.
+        |--------------------------------------------------------------------------
+        */
+        $whmUsername = $this->serverValue($server, [
+            'whm_username',
+        ]);
+
+        $fallbackUsername = $this->serverValue($server, [
+            'root_username',
+            'ssh_username',
+            'username',
+            'user',
+        ]);
+
+        $token = $this->serverSecret($server, [
+            'whm_token',
+            'api_token',
+            'cpanel_token',
+            'access_hash',
+        ]);
+
+        $password = $this->serverSecret($server, [
+            'whm_password',
+            'root_password',
+            'ssh_password',
+            'password',
+        ]);
+
         return [
-            'host' => $this->serverValue($server, [
-                'host',
-                'ip',
-                'ip_address',
-                'server_ip',
-                'hostname',
-            ]),
-
-            'username' => $this->serverValue($server, [
-                'whm_username',
-                'root_username',
-                'ssh_username',
-                'username',
-                'user',
-            ]) ?: 'root',
-
-            'password' => $this->serverSecret($server, [
-                'whm_password',
-                'root_password',
-                'ssh_password',
-                'password',
-            ]),
-
-            'token' => $this->serverSecret($server, [
-                'whm_token',
-                'cpanel_token',
-                'api_token',
-                'access_hash',
-            ]),
+            'host' => $host ? trim($host) : null,
+            'username' => trim($whmUsername ?: $fallbackUsername ?: 'root'),
+            'password' => $password ? trim($password) : null,
+            'token' => $token ? trim($token) : null,
         ];
     }
 
@@ -594,6 +643,11 @@ class DeveloperCpanelImportController extends Controller
         return 'https://' . $host . ':2083';
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Frameworks
+    |--------------------------------------------------------------------------
+    */
     private function frameworkOptions(): array
     {
         return [
@@ -753,6 +807,10 @@ class DeveloperCpanelImportController extends Controller
 
         if (str_contains($domain, 'django')) {
             return 'django';
+        }
+
+        if (str_contains($domain, 'php')) {
+            return 'php';
         }
 
         return 'custom';
