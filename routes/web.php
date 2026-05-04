@@ -18,10 +18,59 @@ use App\Http\Controllers\DeveloperWorkspaceController;
 use App\Http\Controllers\DeveloperAuthController;
 use App\Http\Controllers\DeveloperCpanelImportController;
 
+/*
+|--------------------------------------------------------------------------
+| Developer Codes Subdomain
+|--------------------------------------------------------------------------
+| Separate developer login:
+| https://developercodes.webscepts.com
+|--------------------------------------------------------------------------
+*/
+
+Route::domain('developercodes.webscepts.com')
+    ->middleware(['web'])
+    ->group(function () {
+
+        Route::get('/login', [DeveloperAuthController::class, 'showLogin'])
+            ->name('developer.login');
+
+        Route::post('/login', [DeveloperAuthController::class, 'login'])
+            ->name('developer.login.submit');
+
+        Route::post('/logout', [DeveloperAuthController::class, 'logout'])
+            ->name('developer.logout');
+
+        Route::middleware(['developer.auth'])->group(function () {
+
+            Route::get('/', [DeveloperWorkspaceController::class, 'index'])
+                ->name('developer.domain.workspace');
+
+            Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
+                ->name('developer.domain.workspace.page');
+
+            Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
+                ->name('developer.domain.git.pull');
+
+            Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
+                ->name('developer.domain.clear.cache');
+
+            Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
+                ->name('developer.domain.composer.dump');
+
+            Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
+                ->name('developer.domain.npm.build');
+
+            Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
+                ->name('developer.domain.open.folder');
+
+            Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
+                ->name('developer.domain.env.example');
+        });
+    });
 
 /*
 |--------------------------------------------------------------------------
-| Authentication Routes
+| Main Authentication Routes
 |--------------------------------------------------------------------------
 */
 
@@ -33,7 +82,7 @@ Route::post('/login', [AuthController::class, 'login'])
 
 /*
 |--------------------------------------------------------------------------
-| Protected Routes
+| Protected Admin Routes
 |--------------------------------------------------------------------------
 */
 
@@ -65,9 +114,6 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/panel/wordpress', [PanelAccountPageController::class, 'wordpress'])
         ->name('panel.wordpress');
-
-
-    
 
     /*
     |--------------------------------------------------------------------------
@@ -159,12 +205,6 @@ Route::middleware(['auth'])->group(function () {
 
             Route::post('/{user}/email', [CpanelAccountController::class, 'sendAccountEmail'])
                 ->name('email');
-
-            /*
-            |--------------------------------------------------------------------------
-            | cPanel Auto Login / SSO
-            |--------------------------------------------------------------------------
-            */
 
             Route::get('/{user}/login', [CpanelAccountController::class, 'autoLogin'])
                 ->name('login');
@@ -271,22 +311,29 @@ Route::middleware(['auth'])->group(function () {
                 ->name('recovery');
         });
 
-        Route::prefix('technology/web-scanner')
+    /*
+    |--------------------------------------------------------------------------
+    | Technology Web Scanner
+    |--------------------------------------------------------------------------
+    */
+
+    Route::prefix('technology/web-scanner')
         ->name('technology.webscanner.')
         ->middleware(['throttle:20,1'])
         ->group(function () {
+
             Route::get('/', [SentinelWebScanController::class, 'index'])
                 ->name('index');
-    
+
             Route::post('/scan', [SentinelWebScanController::class, 'scan'])
                 ->name('scan');
-    
+
             Route::get('/{scan}', [SentinelWebScanController::class, 'show'])
                 ->name('show');
-    
+
             Route::post('/{scan}/rescan', [SentinelWebScanController::class, 'rescan'])
                 ->name('rescan');
-    
+
             Route::delete('/{scan}', [SentinelWebScanController::class, 'destroy'])
                 ->name('destroy');
         });
@@ -324,12 +371,6 @@ Route::middleware(['auth'])->group(function () {
         ->name('security.')
         ->group(function () {
 
-            /*
-            |--------------------------------------------------------------------------
-            | Security Pages
-            |--------------------------------------------------------------------------
-            */
-
             Route::get('/alerts', [App\Http\Controllers\SecurityController::class, 'alerts'])
                 ->name('alerts');
 
@@ -345,12 +386,6 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/ssh', [App\Http\Controllers\SecurityController::class, 'ssh'])
                 ->name('ssh');
 
-            /*
-            |--------------------------------------------------------------------------
-            | Firewall Actions
-            |--------------------------------------------------------------------------
-            */
-
             Route::post('/block-ip', [App\Http\Controllers\SecurityController::class, 'blockIp'])
                 ->name('block.ip');
 
@@ -360,23 +395,11 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/restart-firewall', [App\Http\Controllers\SecurityController::class, 'restartFirewall'])
                 ->name('firewall.restart');
 
-            /*
-            |--------------------------------------------------------------------------
-            | SSH Security Actions
-            |--------------------------------------------------------------------------
-            */
-
             Route::post('/ssh/kill-session', [App\Http\Controllers\SecurityController::class, 'killSession'])
                 ->name('ssh.kill');
 
             Route::post('/ssh/block-ip', [App\Http\Controllers\SecurityController::class, 'sshBlockIp'])
                 ->name('ssh.block');
-
-            /*
-            |--------------------------------------------------------------------------
-            | Email Security Actions
-            |--------------------------------------------------------------------------
-            */
 
             Route::post('/email/clear-queue', [App\Http\Controllers\SecurityController::class, 'clearQueue'])
                 ->name('email.clear');
@@ -384,23 +407,11 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/email/block-sender', [App\Http\Controllers\SecurityController::class, 'blockSender'])
                 ->name('email.block');
 
-            /*
-            |--------------------------------------------------------------------------
-            | Malware / Abuse Actions
-            |--------------------------------------------------------------------------
-            */
-
             Route::post('/scan-malware', [App\Http\Controllers\SecurityController::class, 'scanMalware'])
                 ->name('malware.scan');
 
             Route::post('/kill-process', [App\Http\Controllers\SecurityController::class, 'killProcess'])
                 ->name('process.kill');
-
-            /*
-            |--------------------------------------------------------------------------
-            | Live Logs / AI
-            |--------------------------------------------------------------------------
-            */
 
             Route::get('/logs/live', [App\Http\Controllers\SecurityController::class, 'liveLogs'])
                 ->name('logs.live');
@@ -442,51 +453,113 @@ Route::middleware(['auth'])->group(function () {
     */
 
     Route::prefix('domains')
-    ->name('domains.')
-    ->group(function () {
-        Route::get('/', [DomainController::class, 'index'])
-            ->name('index');
+        ->name('domains.')
+        ->group(function () {
 
-        Route::post('/servers/{server}/link', [DomainController::class, 'linkServer'])
-            ->name('servers.link');
+            Route::get('/', [DomainController::class, 'index'])
+                ->name('index');
 
-        Route::post('/servers/{server}/unlink', [DomainController::class, 'unlinkServer'])
-            ->name('servers.unlink');
+            Route::post('/servers/{server}/link', [DomainController::class, 'linkServer'])
+                ->name('servers.link');
 
-        Route::post('/servers/{server}/domains/{domain}/primary', [DomainController::class, 'makePrimary'])
-            ->name('servers.domains.primary');
+            Route::post('/servers/{server}/unlink', [DomainController::class, 'unlinkServer'])
+                ->name('servers.unlink');
 
-        Route::post('/zone/create', [DomainController::class, 'createZone'])
-            ->name('zone.create');
+            Route::post('/servers/{server}/domains/{domain}/primary', [DomainController::class, 'makePrimary'])
+                ->name('servers.domains.primary');
 
-        Route::get('/records/{domain}', [DomainController::class, 'records'])
-            ->name('records');
+            Route::post('/zone/create', [DomainController::class, 'createZone'])
+                ->name('zone.create');
 
-        Route::post('/records/add', [DomainController::class, 'addRecord'])
-            ->name('records.add');
+            Route::get('/records/{domain}', [DomainController::class, 'records'])
+                ->name('records');
 
-        Route::post('/records/delete', [DomainController::class, 'deleteRecord'])
-            ->name('records.delete');
-    });
+            Route::post('/records/add', [DomainController::class, 'addRecord'])
+                ->name('records.add');
+
+            Route::post('/records/delete', [DomainController::class, 'deleteRecord'])
+                ->name('records.delete');
+        });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Webscepts SentinelCore Technology
+    |--------------------------------------------------------------------------
+    */
 
     Route::prefix('technology')
-    ->name('technology.')
-    ->middleware(['throttle:30,1'])
-    ->group(function () {
-        Route::get('/', [TechnologyController::class, 'index'])->name('index');
+        ->name('technology.')
+        ->middleware(['throttle:30,1'])
+        ->group(function () {
 
-        Route::post('/encrypt-text', [TechnologyController::class, 'encryptText'])
-            ->name('encrypt.text');
+            Route::get('/', [TechnologyController::class, 'index'])
+                ->name('index');
 
-        Route::post('/decrypt-text', [TechnologyController::class, 'decryptText'])
-            ->name('decrypt.text');
+            Route::post('/encrypt-text', [TechnologyController::class, 'encryptText'])
+                ->name('encrypt.text');
 
-        Route::post('/encrypt-file', [TechnologyController::class, 'encryptFile'])
-            ->name('encrypt.file');
+            Route::post('/decrypt-text', [TechnologyController::class, 'decryptText'])
+                ->name('decrypt.text');
 
-        Route::post('/rotate-server-passwords', [TechnologyController::class, 'rotateServerPasswords'])
-            ->name('rotate.passwords');
-    });
+            Route::post('/encrypt-file', [TechnologyController::class, 'encryptFile'])
+                ->name('encrypt.file');
+
+            Route::post('/rotate-server-passwords', [TechnologyController::class, 'rotateServerPasswords'])
+                ->name('rotate.passwords');
+        });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Developer Management Routes
+    |--------------------------------------------------------------------------
+    | Main admin panel:
+    | https://systemmonitor.webscepts.com/developers/cpanel-import
+    |--------------------------------------------------------------------------
+    */
+
+    Route::prefix('developers')
+        ->name('developers.')
+        ->group(function () {
+
+            Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
+                ->name('workspace');
+
+            Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
+                ->name('git.pull');
+
+            Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
+                ->name('clear.cache');
+
+            Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
+                ->name('composer.dump');
+
+            Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
+                ->name('npm.build');
+
+            Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
+                ->name('open.folder');
+
+            Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
+                ->name('env.example');
+
+            Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
+                ->name('cpanel.import');
+
+            Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
+                ->name('cpanel.sync');
+
+            Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
+                ->name('cpanel.bulk.import');
+
+            Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
+                ->name('reset.password');
+
+            Route::post('/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
+                ->name('toggle');
+
+            Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
+                ->name('destroy');
+        });
 
     /*
     |--------------------------------------------------------------------------
@@ -496,187 +569,4 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout'])
         ->name('logout');
-});
-Route::prefix('developers')
-    ->name('developers.')
-    ->middleware(['web', 'auth'])
-    ->group(function () {
-        Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-            ->name('workspace');
-
-        Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
-            ->name('git.pull');
-
-        Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
-            ->name('clear.cache');
-
-        Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
-            ->name('composer.dump');
-
-        Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
-            ->name('npm.build');
-
-        Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
-            ->name('open.folder');
-
-        Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
-            ->name('env.example');
-    });
-
-/*
-|--------------------------------------------------------------------------
-| Developer Codes Subdomain
-|--------------------------------------------------------------------------
-*/
-
-Route::domain('developercodes.webscepts.com')
-    ->middleware(['web'])
-    ->group(function () {
-        Route::get('/login', [DeveloperAuthController::class, 'showLogin'])
-            ->name('developer.login');
-
-        Route::post('/login', [DeveloperAuthController::class, 'login'])
-            ->name('developer.login.submit');
-
-        Route::post('/logout', [DeveloperAuthController::class, 'logout'])
-            ->name('developer.logout');
-
-        Route::middleware(['developer.auth'])->group(function () {
-            Route::get('/', [DeveloperWorkspaceController::class, 'index'])
-                ->name('developer.domain.workspace');
-
-            Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-                ->name('developer.domain.workspace.page');
-
-            Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
-                ->name('developer.domain.git.pull');
-
-            Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
-                ->name('developer.domain.clear.cache');
-
-            Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
-                ->name('developer.domain.composer.dump');
-
-            Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
-                ->name('developer.domain.npm.build');
-
-            Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
-                ->name('developer.domain.open.folder');
-
-            Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
-                ->name('developer.domain.env.example');
-        });
-    });
-
-    /*
-|--------------------------------------------------------------------------
-| Developer Codes Subdomain
-|--------------------------------------------------------------------------
-| Separate developer login for:
-| https://developercodes.webscepts.com
-|--------------------------------------------------------------------------
-*/
-
-Route::domain('developercodes.webscepts.com')
-->middleware(['web'])
-->group(function () {
-
-    /*
-    |--------------------------------------------------------------------------
-    | Developer Auth
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/login', [DeveloperAuthController::class, 'showLogin'])
-        ->name('developer.login');
-
-    Route::post('/login', [DeveloperAuthController::class, 'login'])
-        ->name('developer.login.submit');
-
-    Route::post('/logout', [DeveloperAuthController::class, 'logout'])
-        ->name('developer.logout');
-
-    /*
-    |--------------------------------------------------------------------------
-    | Protected Developer Workspace
-    |--------------------------------------------------------------------------
-    */
-    Route::middleware(['developer.auth'])->group(function () {
-        Route::get('/', [DeveloperWorkspaceController::class, 'index'])
-            ->name('developer.domain.workspace');
-
-        Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-            ->name('developer.domain.workspace.page');
-
-        Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
-            ->name('developer.domain.git.pull');
-
-        Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
-            ->name('developer.domain.clear.cache');
-
-        Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
-            ->name('developer.domain.composer.dump');
-
-        Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
-            ->name('developer.domain.npm.build');
-
-        Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
-            ->name('developer.domain.open.folder');
-
-        Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
-            ->name('developer.domain.env.example');
-    });
-});
-
-
-/*
-|--------------------------------------------------------------------------
-| Admin Developer Management Routes
-|--------------------------------------------------------------------------
-| These routes are for main admin panel:
-| https://systemmonitor.webscepts.com/developers/cpanel-import
-|--------------------------------------------------------------------------
-*/
-
-Route::prefix('developers')
-->name('developers.')
-->middleware(['web', 'auth'])
-->group(function () {
-
-    Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-        ->name('workspace');
-
-    Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
-        ->name('git.pull');
-
-    Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
-        ->name('clear.cache');
-
-    Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
-        ->name('composer.dump');
-
-    Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
-        ->name('npm.build');
-
-    Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
-        ->name('open.folder');
-
-    Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
-        ->name('env.example');
-
-    /*
-    |--------------------------------------------------------------------------
-    | cPanel Developer Login Management
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
-        ->name('cpanel.import');
-
-    Route::post('/cpanel-import', [DeveloperCpanelImportController::class, 'store'])
-        ->name('cpanel.import.store');
-
-    Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
-        ->name('reset.password');
-
-    Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
-        ->name('destroy');
 });
