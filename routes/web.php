@@ -548,6 +548,9 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
                 ->name('cpanel.sync');
 
+                Route::post('/cpanel-login-import', [DeveloperCpanelImportController::class, 'importSingleCpanelLogin'])
+    ->name('cpanel.login.import');
+
             Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
                 ->name('cpanel.bulk.import');
 

@@ -33,6 +33,17 @@ class DeveloperCpanelImportController extends Controller
         ));
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Fetch all cPanel accounts from selected server
+    |--------------------------------------------------------------------------
+    | Uses Server model:
+    | - host / ip
+    | - root username / WHM username
+    | - root password / WHM password
+    | - WHM token if available
+    |--------------------------------------------------------------------------
+    */
     public function sync(Request $request)
     {
         $data = $request->validate([
@@ -49,12 +60,20 @@ class DeveloperCpanelImportController extends Controller
                 'cpanel_accounts_server_id' => $server->id,
             ]);
 
-            return back()->with('success', count($accounts) . ' cPanel accounts loaded from ' . $server->name . '.');
+            return back()->with(
+                'success',
+                count($accounts) . ' cPanel accounts loaded from ' . ($server->name ?? $server->host)
+            );
         } catch (\Throwable $e) {
             return back()->with('error', 'Unable to fetch cPanel accounts: ' . $e->getMessage());
         }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Import selected WHM/cPanel users to Developer Codes
+    |--------------------------------------------------------------------------
+    */
     public function bulkImport(Request $request)
     {
         $data = $request->validate([
@@ -161,6 +180,132 @@ class DeveloperCpanelImportController extends Controller
             ->with('created_logins', $createdLogins);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Import one cPanel login manually
+    |--------------------------------------------------------------------------
+    | Uses selected server host from Server model.
+    | User enters only cPanel username/password.
+    |--------------------------------------------------------------------------
+    */
+    public function importSingleCpanelLogin(Request $request)
+    {
+        $data = $request->validate([
+            'server_id' => ['required', 'exists:servers,id'],
+            'cpanel_username' => ['required', 'string', 'max:100'],
+            'cpanel_password' => ['required', 'string', 'max:255'],
+            'contact_email' => ['nullable', 'email', 'max:255'],
+            'cpanel_domain' => ['nullable', 'string', 'max:255'],
+            'framework' => ['nullable', 'string', 'max:100'],
+            'project_root' => ['nullable', 'string', 'max:255'],
+
+            'can_git_pull' => ['nullable'],
+            'can_clear_cache' => ['nullable'],
+            'can_composer' => ['nullable'],
+            'can_npm' => ['nullable'],
+            'can_run_build' => ['nullable'],
+            'can_run_python' => ['nullable'],
+            'can_restart_app' => ['nullable'],
+            'can_view_files' => ['nullable'],
+            'can_edit_files' => ['nullable'],
+            'can_delete_files' => ['nullable'],
+        ]);
+
+        $server = Server::findOrFail($data['server_id']);
+
+        $cpanelUsername = trim($data['cpanel_username']);
+        $cpanelPassword = $data['cpanel_password'];
+
+        $cpanelUrl = $this->cpanelUrlFromServer($server);
+
+        try {
+            $accountInfo = $this->fetchSingleCpanelAccountInfo(
+                $cpanelUrl,
+                $cpanelUsername,
+                $cpanelPassword
+            );
+        } catch (\Throwable $e) {
+            return back()->with('error', 'cPanel login failed: ' . $e->getMessage());
+        }
+
+        $domain = $data['cpanel_domain']
+            ?: ($accountInfo['domain'] ?? null);
+
+        $contactEmail = $data['contact_email']
+            ?: ($accountInfo['email'] ?? null)
+            ?: $cpanelUsername . '@developer.local';
+
+        $framework = $data['framework'] ?? 'custom';
+        $frameworkConfig = $this->frameworkDefaults($framework, $cpanelUsername, $domain);
+
+        $projectRoot = $data['project_root']
+            ?: $frameworkConfig['project_root']
+            ?: '/home/' . $cpanelUsername . '/public_html';
+
+        DeveloperUser::updateOrCreate(
+            [
+                'cpanel_username' => $cpanelUsername,
+            ],
+            [
+                'server_id' => $server->id,
+                'name' => $cpanelUsername,
+                'email' => $contactEmail,
+                'contact_email' => $contactEmail,
+                'cpanel_domain' => $domain,
+
+                /*
+                |--------------------------------------------------------------------------
+                | Developer Codes password
+                |--------------------------------------------------------------------------
+                | This uses same cPanel password for Developer Codes login.
+                |--------------------------------------------------------------------------
+                */
+                'password' => bcrypt($cpanelPassword),
+                'temporary_password' => Crypt::encryptString($cpanelPassword),
+                'password_must_change' => false,
+
+                'role' => 'developer',
+                'ssh_username' => $cpanelUsername,
+                'allowed_project_path' => $projectRoot,
+
+                'project_type' => $frameworkConfig['project_type'],
+                'framework' => $framework,
+                'project_root' => $projectRoot,
+                'build_command' => $frameworkConfig['build_command'],
+                'deploy_command' => $frameworkConfig['deploy_command'],
+                'start_command' => $frameworkConfig['start_command'],
+
+                'can_git_pull' => $request->boolean('can_git_pull'),
+                'can_clear_cache' => $request->boolean('can_clear_cache', true),
+                'can_composer' => $request->boolean('can_composer'),
+                'can_npm' => $request->boolean('can_npm'),
+                'can_run_build' => $request->boolean('can_run_build'),
+                'can_run_python' => $request->boolean('can_run_python'),
+                'can_restart_app' => $request->boolean('can_restart_app'),
+                'can_view_files' => $request->boolean('can_view_files', true),
+                'can_edit_files' => $request->boolean('can_edit_files'),
+                'can_delete_files' => $request->boolean('can_delete_files'),
+
+                'is_active' => true,
+            ]
+        );
+
+        return back()
+            ->with('success', 'Developer Codes login created from cPanel login.')
+            ->with('created_logins', [
+                [
+                    'name' => $cpanelUsername,
+                    'login' => $cpanelUsername,
+                    'email' => $contactEmail,
+                    'domain' => $domain,
+                    'framework' => $framework,
+                    'project_root' => $projectRoot,
+                    'password' => $cpanelPassword,
+                    'url' => 'https://developercodes.webscepts.com/login',
+                ],
+            ]);
+    }
+
     public function resetPassword(DeveloperUser $developer)
     {
         $temporaryPassword = Str::password(16);
@@ -203,16 +348,31 @@ class DeveloperCpanelImportController extends Controller
         return back()->with('success', 'Developer login deleted.');
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | WHM account fetch using Server model credentials
+    |--------------------------------------------------------------------------
+    */
     private function fetchCpanelAccounts(Server $server): array
     {
-        $host = $server->host;
-        $username = $server->username ?: 'root';
-        $password = $this->serverPassword($server);
+        $credentials = $this->serverCredentials($server);
 
-        $token = $server->whm_token
-            ?? $server->cpanel_token
-            ?? $server->api_token
-            ?? null;
+        $host = $credentials['host'];
+        $username = $credentials['username'];
+        $password = $credentials['password'];
+        $token = $credentials['token'];
+
+        if (!$host) {
+            throw new \Exception('Server host/IP is missing.');
+        }
+
+        if (!$username) {
+            throw new \Exception('Server root/WHM username is missing.');
+        }
+
+        if (!$token && !$password) {
+            throw new \Exception('Server root/WHM password or WHM API token is missing.');
+        }
 
         $url = 'https://' . $host . ':2087/json-api/listaccts';
 
@@ -236,7 +396,9 @@ class DeveloperCpanelImportController extends Controller
         ]);
 
         if (!$response->successful()) {
-            throw new \Exception('WHM API failed. HTTP ' . $response->status() . ' - ' . Str::limit($response->body(), 200));
+            throw new \Exception(
+                'WHM API failed. HTTP ' . $response->status() . ' - ' . Str::limit($response->body(), 300)
+            );
         }
 
         $json = $response->json();
@@ -266,6 +428,8 @@ class DeveloperCpanelImportController extends Controller
 
                 $framework = $this->guessFrameworkFromAccount($domain);
 
+                $defaults = $this->frameworkDefaults($framework, $user, $domain);
+
                 return [
                     'server_id' => $server->id,
                     'server_name' => $server->name,
@@ -284,20 +448,20 @@ class DeveloperCpanelImportController extends Controller
                     'disklimit' => $account['disklimit'] ?? null,
                     'home' => $home,
 
-                    'project_type' => 'web',
+                    'project_type' => $defaults['project_type'],
                     'framework' => $framework,
                     'project_root' => $documentRoot,
-                    'build_command' => $this->frameworkDefaults($framework, $user, $domain)['build_command'],
-                    'deploy_command' => $this->frameworkDefaults($framework, $user, $domain)['deploy_command'],
-                    'start_command' => $this->frameworkDefaults($framework, $user, $domain)['start_command'],
+                    'build_command' => $defaults['build_command'],
+                    'deploy_command' => $defaults['deploy_command'],
+                    'start_command' => $defaults['start_command'],
 
                     'can_view_files' => true,
-                    'can_clear_cache' => in_array($framework, ['laravel', 'php', 'wordpress']),
+                    'can_clear_cache' => in_array($framework, ['laravel', 'php', 'wordpress'], true),
                     'can_git_pull' => false,
-                    'can_composer' => in_array($framework, ['laravel', 'php']),
-                    'can_npm' => in_array($framework, ['react', 'vue', 'angular', 'node']),
-                    'can_run_build' => in_array($framework, ['react', 'vue', 'angular', 'node']),
-                    'can_run_python' => in_array($framework, ['python', 'flask', 'django']),
+                    'can_composer' => in_array($framework, ['laravel', 'php'], true),
+                    'can_npm' => in_array($framework, ['react', 'vue', 'angular', 'node', 'nextjs', 'nuxt', 'svelte'], true),
+                    'can_run_build' => in_array($framework, ['react', 'vue', 'angular', 'node', 'nextjs', 'nuxt', 'svelte'], true),
+                    'can_run_python' => in_array($framework, ['python', 'flask', 'django', 'fastapi'], true),
                     'can_restart_app' => false,
                     'can_edit_files' => false,
                     'can_delete_files' => false,
@@ -306,6 +470,128 @@ class DeveloperCpanelImportController extends Controller
             ->filter()
             ->values()
             ->toArray();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Single cPanel API check
+    |--------------------------------------------------------------------------
+    */
+    private function fetchSingleCpanelAccountInfo(string $cpanelUrl, string $username, string $password): array
+    {
+        $cpanelUrl = rtrim($cpanelUrl, '/');
+
+        $response = Http::withoutVerifying()
+            ->timeout(30)
+            ->acceptJson()
+            ->withBasicAuth($username, $password)
+            ->get($cpanelUrl . '/execute/ContactInfo/load_contact_info');
+
+        if (!$response->successful()) {
+            throw new \Exception(
+                'Invalid cPanel username/password or cPanel API blocked. HTTP ' . $response->status()
+            );
+        }
+
+        $json = $response->json();
+
+        $email = data_get($json, 'data.email')
+            ?: data_get($json, 'data.contact_email')
+            ?: data_get($json, 'data.second_email');
+
+        return [
+            'email' => $email,
+            'domain' => null,
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Get server credentials from Server model
+    |--------------------------------------------------------------------------
+    | Supports different possible column names safely.
+    |--------------------------------------------------------------------------
+    */
+    private function serverCredentials(Server $server): array
+    {
+        return [
+            'host' => $this->serverValue($server, [
+                'host',
+                'ip',
+                'ip_address',
+                'server_ip',
+                'hostname',
+            ]),
+
+            'username' => $this->serverValue($server, [
+                'whm_username',
+                'root_username',
+                'ssh_username',
+                'username',
+                'user',
+            ]) ?: 'root',
+
+            'password' => $this->serverSecret($server, [
+                'whm_password',
+                'root_password',
+                'ssh_password',
+                'password',
+            ]),
+
+            'token' => $this->serverSecret($server, [
+                'whm_token',
+                'cpanel_token',
+                'api_token',
+                'access_hash',
+            ]),
+        ];
+    }
+
+    private function serverValue(Server $server, array $columns): ?string
+    {
+        foreach ($columns as $column) {
+            if (Schema::hasColumn($server->getTable(), $column) && !empty($server->{$column})) {
+                return trim((string) $server->{$column});
+            }
+        }
+
+        return null;
+    }
+
+    private function serverSecret(Server $server, array $columns): ?string
+    {
+        foreach ($columns as $column) {
+            if (!Schema::hasColumn($server->getTable(), $column) || empty($server->{$column})) {
+                continue;
+            }
+
+            $value = (string) $server->{$column};
+
+            try {
+                return Crypt::decryptString($value);
+            } catch (\Throwable $e) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    private function cpanelUrlFromServer(Server $server): string
+    {
+        $host = $this->serverValue($server, [
+            'host',
+            'ip',
+            'ip_address',
+            'server_ip',
+            'hostname',
+        ]);
+
+        if (!$host) {
+            throw new \Exception('Server host/IP is missing.');
+        }
+
+        return 'https://' . $host . ':2083';
     }
 
     private function frameworkOptions(): array
@@ -366,7 +652,7 @@ class DeveloperCpanelImportController extends Controller
                 'project_root' => $publicHtml,
                 'build_command' => 'npm install && npm run build',
                 'deploy_command' => 'npm run build',
-                'start_command' => 'npm run dev',
+                'start_command' => $framework === 'angular' ? 'ng serve' : 'npm run dev',
             ],
             'node' => [
                 'project_type' => 'node',
@@ -386,6 +672,34 @@ class DeveloperCpanelImportController extends Controller
                     'fastapi' => './venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000',
                     default => 'python3 app.py',
                 },
+            ],
+            'java' => [
+                'project_type' => 'java',
+                'project_root' => $publicHtml,
+                'build_command' => './mvnw clean package',
+                'deploy_command' => './mvnw clean package -DskipTests',
+                'start_command' => 'java -jar target/app.jar',
+            ],
+            'dotnet' => [
+                'project_type' => 'dotnet',
+                'project_root' => $publicHtml,
+                'build_command' => 'dotnet restore && dotnet build',
+                'deploy_command' => 'dotnet publish -c Release',
+                'start_command' => 'dotnet run',
+            ],
+            'ruby' => [
+                'project_type' => 'ruby',
+                'project_root' => $publicHtml,
+                'build_command' => 'bundle install',
+                'deploy_command' => 'bundle install --deployment',
+                'start_command' => 'bundle exec rails server',
+            ],
+            'go' => [
+                'project_type' => 'go',
+                'project_root' => $publicHtml,
+                'build_command' => 'go mod download && go build',
+                'deploy_command' => 'go build',
+                'start_command' => './app',
             ],
             default => [
                 'project_type' => 'custom',
@@ -409,8 +723,8 @@ class DeveloperCpanelImportController extends Controller
             return 'wordpress';
         }
 
-        if (str_contains($domain, 'api')) {
-            return 'node';
+        if (str_contains($domain, 'laravel')) {
+            return 'laravel';
         }
 
         if (str_contains($domain, 'react')) {
@@ -425,25 +739,22 @@ class DeveloperCpanelImportController extends Controller
             return 'angular';
         }
 
-        if (str_contains($domain, 'python') || str_contains($domain, 'flask')) {
+        if (str_contains($domain, 'node') || str_contains($domain, 'api')) {
+            return 'node';
+        }
+
+        if (str_contains($domain, 'python')) {
+            return 'python';
+        }
+
+        if (str_contains($domain, 'flask')) {
             return 'flask';
         }
 
+        if (str_contains($domain, 'django')) {
+            return 'django';
+        }
+
         return 'custom';
-    }
-
-    private function serverPassword(Server $server): string
-    {
-        $password = $server->password ?? '';
-
-        if (!$password) {
-            return '';
-        }
-
-        try {
-            return Crypt::decryptString($password);
-        } catch (\Throwable $e) {
-            return $password;
-        }
     }
 }
