@@ -14,7 +14,13 @@ class DeveloperUser extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'cpanel_username',
+        'contact_email',
+        'cpanel_domain',
+        'server_id',
         'password',
+        'temporary_password',
+        'password_must_change',
         'role',
         'ssh_username',
         'allowed_project_path',
@@ -44,6 +50,12 @@ class DeveloperUser extends Authenticatable
         'can_edit_files' => 'boolean',
         'can_delete_files' => 'boolean',
         'is_active' => 'boolean',
+        'password_must_change' => 'boolean',
         'last_login_at' => 'datetime',
     ];
+
+    public function server()
+    {
+        return $this->belongsTo(Server::class);
+    }
 }

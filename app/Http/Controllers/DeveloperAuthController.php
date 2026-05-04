@@ -20,22 +20,27 @@ class DeveloperAuthController extends Controller
 
     public function login(Request $request)
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
+        $data = $request->validate([
+            'login' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
 
-        $developer = DeveloperUser::where('email', $credentials['email'])->first();
+        $login = trim($data['login']);
+
+        $developer = DeveloperUser::where('email', $login)
+            ->orWhere('contact_email', $login)
+            ->orWhere('cpanel_username', $login)
+            ->first();
 
         if (!$developer || !$developer->is_active) {
             return back()
-                ->withInput($request->only('email'))
+                ->withInput($request->only('login'))
                 ->with('error', 'Developer account is disabled or not found.');
         }
 
-        if (!Hash::check($credentials['password'], $developer->password)) {
+        if (!Hash::check($data['password'], $developer->password)) {
             return back()
-                ->withInput($request->only('email'))
+                ->withInput($request->only('login'))
                 ->with('error', 'Invalid developer login details.');
         }
 
