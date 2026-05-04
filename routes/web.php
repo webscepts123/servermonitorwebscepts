@@ -14,6 +14,7 @@ use App\Http\Controllers\LiteSpeedController;
 use App\Http\Controllers\DomainController;
 use App\Http\Controllers\TechnologyController;
 use App\Http\Controllers\SentinelWebScanController;
+use App\Http\Controllers\DeveloperWorkspaceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -493,3 +494,56 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])
         ->name('logout');
 });
+Route::prefix('developers')
+    ->name('developers.')
+    ->middleware(['web', 'auth'])
+    ->group(function () {
+        Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
+            ->name('workspace');
+
+        Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
+            ->name('git.pull');
+
+        Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
+            ->name('clear.cache');
+
+        Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
+            ->name('composer.dump');
+
+        Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
+            ->name('npm.build');
+
+        Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
+            ->name('open.folder');
+
+        Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
+            ->name('env.example');
+    });
+
+Route::domain('developercodes.webscepts.com')
+    ->middleware(['web', 'auth'])
+    ->group(function () {
+        Route::get('/', [DeveloperWorkspaceController::class, 'index'])
+            ->name('developer.domain.workspace');
+
+        Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
+            ->name('developer.domain.workspace.page');
+
+        Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
+            ->name('developer.domain.git.pull');
+
+        Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
+            ->name('developer.domain.clear.cache');
+
+        Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
+            ->name('developer.domain.composer.dump');
+
+        Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
+            ->name('developer.domain.npm.build');
+
+        Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
+            ->name('developer.domain.open.folder');
+
+        Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
+            ->name('developer.domain.env.example');
+    });
