@@ -269,8 +269,13 @@
                         ['Logs Viewer', 'tools.logs', 'fa-file-lines', ['tools.logs']],
                     ],
 
+
                     'Domains' => [
                         ['Domain Manager', 'domains.index', 'fa-globe', ['domains.*']],
+                    ],
+                    'Developers' => [
+                        ['Developer Codes', 'developers.workspace', 'fa-code', ['developers.workspace']],
+                        ['cPanel Developer Logins', 'developers.cpanel.import', 'fa-users-gear', ['developers.cpanel.*']],
                     ],
                 ];
             @endphp
