@@ -274,9 +274,32 @@
                         ['Domain Manager', 'domains.index', 'fa-globe', ['domains.*']],
                     ],
                     'Developers' => [
-                        ['Developer Codes', 'developers.workspace', 'fa-code', ['developers.workspace']],
-                        ['cPanel Developer Logins', 'developers.cpanel.import', 'fa-users-gear', ['developers.cpanel.*']],
-                    ],
+                            [
+                                'Developer Workspace',
+                                'developers.workspace',
+                                'fa-code',
+                                ['developers.workspace'],
+                            ],
+                            [
+                                'cPanel User Import',
+                                'developers.cpanel.import',
+                                'fa-users-gear',
+                                [
+                                    'developers.cpanel.import',
+                                    'developers.cpanel.sync',
+                                    'developers.cpanel.bulk.import',
+                                ],
+                            ],
+                            [
+                                'Developer Portal',
+                                'developer.login',
+                                'fa-arrow-up-right-from-square',
+                                [
+                                    'developer.login',
+                                    'developer.domain.*',
+                                ],
+                            ],
+                        ],
                 ];
             @endphp
 

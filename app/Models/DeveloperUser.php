@@ -24,13 +24,25 @@ class DeveloperUser extends Authenticatable
         'role',
         'ssh_username',
         'allowed_project_path',
+
+        'project_type',
+        'framework',
+        'project_root',
+        'build_command',
+        'deploy_command',
+        'start_command',
+
         'can_git_pull',
         'can_clear_cache',
         'can_composer',
         'can_npm',
+        'can_run_build',
+        'can_run_python',
+        'can_restart_app',
         'can_view_files',
         'can_edit_files',
         'can_delete_files',
+
         'is_active',
         'last_login_at',
     ];
@@ -38,6 +50,7 @@ class DeveloperUser extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'temporary_password',
     ];
 
     protected $casts = [
@@ -46,6 +59,9 @@ class DeveloperUser extends Authenticatable
         'can_clear_cache' => 'boolean',
         'can_composer' => 'boolean',
         'can_npm' => 'boolean',
+        'can_run_build' => 'boolean',
+        'can_run_python' => 'boolean',
+        'can_restart_app' => 'boolean',
         'can_view_files' => 'boolean',
         'can_edit_files' => 'boolean',
         'can_delete_files' => 'boolean',
