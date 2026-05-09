@@ -7,10 +7,28 @@
 
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    {{-- Tailwind CDN - No Vite Needed --}}
+    <script src="https://cdn.tailwindcss.com"></script>
 
+    {{-- Font Awesome CDN --}}
     <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+          referrerpolicy="no-referrer">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        soft: '0 18px 50px rgba(15, 23, 42, 0.10)',
+                    }
+                }
+            }
+        }
+    </script>
 
     <style>
         body {
@@ -47,15 +65,25 @@
             background: rgba(255, 255, 255, .08);
             border-color: rgba(255, 255, 255, .08);
         }
+
+        .glass-card {
+            background: rgba(255, 255, 255, .06);
+            border: 1px solid rgba(255, 255, 255, .12);
+            backdrop-filter: blur(16px);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
     </style>
+
+    @stack('styles')
 </head>
 
-<body class="min-h-screen text-slate-900">
+<body class="min-h-screen text-slate-900 antialiased">
 
 @php
     $developer = auth()->guard('developer')->user();
-
-    $workspaceRoute = route('developer.domain.workspace');
 
     $developerName = $developer->name
         ?? $developer->cpanel_username
@@ -64,19 +92,25 @@
 
     $developerEmail = $developer->email
         ?? $developer->contact_email
-        ?? '-';
+        ?? 'No email';
 
     $framework = $developer->framework ?? 'custom';
 
     $projectRoot = $developer->project_root
         ?? $developer->allowed_project_path
         ?? '/home/project/public_html';
+
+    $workspaceRoute = route('developer.domain.workspace');
+
+    $codeEditorRoute = \Illuminate\Support\Facades\Route::has('developer.domain.codeditor')
+        ? route('developer.domain.codeditor')
+        : url('/codeditor');
 @endphp
 
 <div class="min-h-screen flex">
 
     {{-- Developer Sidebar --}}
-    <aside class="hidden lg:flex lg:w-80 xl:w-86 bg-slate-950/95 text-white border-r border-white/10 flex-col fixed inset-y-0 left-0 z-40">
+    <aside class="hidden lg:flex lg:w-80 bg-slate-950/95 text-white border-r border-white/10 flex-col fixed inset-y-0 left-0 z-40">
 
         {{-- Brand --}}
         <div class="p-6 border-b border-white/10">
@@ -126,8 +160,8 @@
                 </p>
 
                 <nav class="space-y-2">
-                    <a href="{{ route('developer.domain.workspace') }}"
-                       class="dev-nav-link dev-nav-active flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                    <a href="{{ $workspaceRoute }}"
+                       class="dev-nav-link {{ request()->routeIs('developer.domain.workspace') ? 'dev-nav-active' : '' }} flex items-center justify-between px-4 py-3 rounded-2xl transition">
                         <span class="flex items-center gap-3 font-black">
                             <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
                                 <i class="fa-solid fa-layer-group"></i>
@@ -167,7 +201,8 @@
                 </p>
 
                 <nav class="space-y-2">
-                    <a href="#vscode-section"
+                    <a href="{{ $codeEditorRoute }}"
+                       target="_blank"
                        class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
                         <span class="flex items-center gap-3 font-black">
                             <span class="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-300 flex items-center justify-center">
@@ -175,7 +210,7 @@
                             </span>
                             Web VS Code
                         </span>
-                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                        <i class="fa-solid fa-arrow-up-right-from-square text-xs text-slate-400"></i>
                     </a>
 
                     <a href="#git-section"
@@ -231,6 +266,11 @@
                     </a>
                 </nav>
             </div>
+
+            <div class="rounded-2xl glass-card p-4">
+                <p class="text-xs text-slate-400 font-bold">Project Root</p>
+                <p class="text-xs text-white font-black mt-2 break-all">{{ $projectRoot }}</p>
+            </div>
         </div>
 
         {{-- Logout --}}
@@ -260,17 +300,25 @@
                 </div>
             </div>
 
-            <form method="POST" action="{{ route('developer.logout') }}">
-                @csrf
-                <button class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center">
-                    <i class="fa-solid fa-right-from-bracket"></i>
-                </button>
-            </form>
+            <div class="flex items-center gap-2">
+                <a href="{{ $codeEditorRoute }}"
+                   target="_blank"
+                   class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
+                    <i class="fa-solid fa-code"></i>
+                </a>
+
+                <form method="POST" action="{{ route('developer.logout') }}">
+                    @csrf
+                    <button class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
     {{-- Main --}}
-    <main class="flex-1 lg:ml-80 xl:ml-86 pt-20 lg:pt-0">
+    <main class="flex-1 lg:ml-80 pt-20 lg:pt-0">
         <div class="min-h-screen bg-slate-100">
             @yield('developer-content')
         </div>
