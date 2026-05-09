@@ -24,7 +24,7 @@ class DeveloperUser extends Authenticatable
         'role',
         'ssh_username',
         'allowed_project_path',
-
+'code_editor_url',
         'project_type',
         'framework',
         'project_root',

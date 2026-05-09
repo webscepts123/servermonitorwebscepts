@@ -2,395 +2,575 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Server;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\Process;
 
 class DeveloperWorkspaceController extends Controller
 {
+    /*
+    |--------------------------------------------------------------------------
+    | Developer Workspace Pages
+    |--------------------------------------------------------------------------
+    */
+
     public function index()
     {
-        $servers = $this->servers();
-
-        $workspace = [
-            'project_path' => base_path(),
-            'public_path' => public_path(),
-            'storage_path' => storage_path(),
-            'app_name' => config('app.name'),
-            'app_env' => app()->environment(),
-            'app_url' => config('app.url'),
-            'developer_codes_url' => env('DEVELOPER_CODES_URL', 'https://developercodes.webscepts.com'),
-            'php_version' => PHP_VERSION,
-            'laravel_version' => app()->version(),
-            'git_branch' => $this->runCommand('git rev-parse --abbrev-ref HEAD'),
-            'git_status' => $this->runCommand('git status --short'),
-            'last_commit' => $this->runCommand('git log -1 --pretty=format:"%h - %s (%cr)"'),
-            'composer_status' => File::exists(base_path('composer.json')) ? 'composer.json found' : 'composer.json missing',
-            'env_status' => File::exists(base_path('.env')) ? '.env protected' : '.env missing',
-            'node_status' => File::exists(base_path('package.json')) ? 'package.json found' : 'package.json missing',
-            'storage_writable' => is_writable(storage_path()),
-            'cache_writable' => is_writable(base_path('bootstrap/cache')),
-            'php_fpm_socket' => File::exists('/run/php-fpm/www.sock') ? '/run/php-fpm/www.sock' : 'Not detected',
-        ];
-
-        $quickCommands = [
-            [
-                'title' => 'Clear Laravel Cache',
-                'description' => 'Clear config, route, view and app cache.',
-                'route' => $this->routeByDomain('clear.cache'),
-                'color' => 'blue',
-                'icon' => 'fa-broom',
-            ],
-            [
-                'title' => 'Git Pull',
-                'description' => 'Pull latest code from the current Git branch and clear Laravel cache.',
-                'route' => $this->routeByDomain('git.pull'),
-                'color' => 'green',
-                'icon' => 'fa-code-pull-request',
-            ],
-            [
-                'title' => 'Composer Dump',
-                'description' => 'Refresh Composer autoload files.',
-                'route' => $this->routeByDomain('composer.dump'),
-                'color' => 'purple',
-                'icon' => 'fa-box',
-            ],
-            [
-                'title' => 'NPM Build',
-                'description' => 'Run npm install and npm run build if package.json exists.',
-                'route' => $this->routeByDomain('npm.build'),
-                'color' => 'orange',
-                'icon' => 'fa-brands fa-node-js',
-            ],
-        ];
-
-        $safeFolders = $this->safeFolders();
-
-        return view('developers.workspace', compact(
-            'servers',
-            'workspace',
-            'quickCommands',
-            'safeFolders'
-        ));
+        return $this->renderWorkspacePage(
+            'Overview',
+            'Workspace overview, project details, quick tools and permissions.',
+            'fa-solid fa-layer-group',
+            'overview'
+        );
     }
 
-    public function gitPull()
+    public function projectFiles()
     {
-        try {
-            $this->ensureGitRepository();
-
-            $output = $this->runCommand(
-                'git status --short 2>&1 && ' .
-                'git pull 2>&1 && ' .
-                'composer dump-autoload 2>&1 && ' .
-                'php artisan optimize:clear 2>&1'
-            );
-
-            return back()
-                ->with('success', 'Git pull completed successfully.')
-                ->with('command_output', $output);
-        } catch (\Throwable $e) {
-            Log::error('Developer git pull failed', ['error' => $e->getMessage()]);
-
-            return back()->with('error', 'Git pull failed: ' . $e->getMessage());
-        }
+        return $this->renderWorkspacePage(
+            'Project Files',
+            'View project path, public path, file access status and editor shortcuts.',
+            'fa-solid fa-folder-tree',
+            'project-files'
+        );
     }
 
-    public function clearCache()
+    public function commands()
     {
-        try {
-            $output = $this->runCommand(
-                'php artisan optimize:clear 2>&1 && ' .
-                'php artisan view:clear 2>&1 && ' .
-                'php artisan cache:clear 2>&1 && ' .
-                'php artisan route:clear 2>&1 && ' .
-                'php artisan config:clear 2>&1'
-            );
-
-            return back()
-                ->with('success', 'Laravel cache cleared successfully.')
-                ->with('command_output', $output);
-        } catch (\Throwable $e) {
-            Log::error('Developer cache clear failed', ['error' => $e->getMessage()]);
-
-            return back()->with('error', 'Cache clear failed: ' . $e->getMessage());
-        }
+        return $this->renderWorkspacePage(
+            'Commands',
+            'Run approved project commands only. Unsafe shell access is blocked.',
+            'fa-solid fa-terminal',
+            'commands'
+        );
     }
 
-    public function composerDump()
+    public function gitTools()
     {
-        try {
-            if (!File::exists(base_path('composer.json'))) {
-                return back()->with('error', 'composer.json not found in project root.');
-            }
-
-            $output = $this->runCommand(
-                'composer dump-autoload 2>&1 && ' .
-                'php artisan optimize:clear 2>&1'
-            );
-
-            return back()
-                ->with('success', 'Composer autoload refreshed successfully.')
-                ->with('command_output', $output);
-        } catch (\Throwable $e) {
-            Log::error('Developer composer dump failed', ['error' => $e->getMessage()]);
-
-            return back()->with('error', 'Composer dump failed: ' . $e->getMessage());
-        }
+        return $this->renderWorkspacePage(
+            'Git Tools',
+            'Check branch details and run approved Git actions.',
+            'fa-solid fa-code-branch',
+            'git-tools'
+        );
     }
 
-    public function npmBuild()
+    public function database()
     {
-        try {
-            if (!File::exists(base_path('package.json'))) {
-                return back()->with('error', 'package.json not found in project root.');
-            }
-
-            $output = $this->runCommand(
-                'npm install 2>&1 && ' .
-                'npm run build 2>&1 && ' .
-                'php artisan optimize:clear 2>&1'
-            );
-
-            return back()
-                ->with('success', 'NPM build completed successfully.')
-                ->with('command_output', $output);
-        } catch (\Throwable $e) {
-            Log::error('Developer npm build failed', ['error' => $e->getMessage()]);
-
-            return back()->with('error', 'NPM build failed: ' . $e->getMessage());
-        }
+        return $this->renderWorkspacePage(
+            'Database Access',
+            'View assigned MySQL and PostgreSQL access details.',
+            'fa-solid fa-database',
+            'database'
+        );
     }
 
-    public function openFolder(Request $request)
+    public function envManager()
     {
-        $data = $request->validate([
-            'folder' => 'required|string|max:255',
-        ]);
-
-        $folder = $this->resolveSafeFolder($data['folder']);
-
-        if (!$folder) {
-            return back()->with('error', 'Folder is not allowed.');
-        }
-
-        $items = collect(File::files($folder))
-            ->map(function ($file) use ($folder) {
-                return [
-                    'name' => $file->getFilename(),
-                    'path' => str_replace(base_path() . '/', '', $file->getPathname()),
-                    'size' => $file->getSize(),
-                    'modified' => date('Y-m-d H:i:s', $file->getMTime()),
-                    'type' => 'file',
-                ];
-            })
-            ->merge(
-                collect(File::directories($folder))->map(function ($dir) {
-                    return [
-                        'name' => basename($dir),
-                        'path' => str_replace(base_path() . '/', '', $dir),
-                        'size' => null,
-                        'modified' => date('Y-m-d H:i:s', filemtime($dir)),
-                        'type' => 'folder',
-                    ];
-                })
-            )
-            ->sortBy('name')
-            ->values();
-
-        return back()
-            ->with('success', 'Folder loaded: ' . str_replace(base_path() . '/', '', $folder))
-            ->with('folder_items', $items->toArray())
-            ->with('folder_path', str_replace(base_path() . '/', '', $folder));
+        return $this->renderWorkspacePage(
+            'ENV Manager',
+            'Safe environment configuration notes and .env example tools.',
+            'fa-solid fa-file-code',
+            'env-manager'
+        );
     }
 
-    public function downloadEnvExample()
+    public function errorLogs()
     {
-        $example = [
-            'APP_NAME="Webscepts SentinelCore"',
-            'APP_ENV=production',
-            'APP_DEBUG=false',
-            'APP_URL=https://systemmonitor.webscepts.com',
-            '',
-            'DEVELOPER_CODES_URL=https://developercodes.webscepts.com',
-            '',
-            'SESSION_DRIVER=file',
-            'SESSION_LIFETIME=120',
-            'SESSION_ENCRYPT=false',
-            'SESSION_PATH=/',
-            'SESSION_DOMAIN=systemmonitor.webscepts.com',
-            'SESSION_SECURE_COOKIE=true',
-            'SESSION_HTTP_ONLY=true',
-            'SESSION_SAME_SITE=lax',
-            '',
-            'MAIL_MAILER=smtp',
-            'MAIL_HOST=bizmail.webscepts.com',
-            'MAIL_PORT=587',
-            'MAIL_USERNAME=system.crm@webscepts.com',
-            'MAIL_PASSWORD="CHANGE_ME"',
-            'MAIL_ENCRYPTION=tls',
-            'MAIL_FROM_ADDRESS=system.crm@webscepts.com',
-            'MAIL_FROM_NAME="Webscepts SentinelCore"',
-            '',
-            'SENTINEL_PYTHON_BIN=/usr/bin/python3',
-            '',
-            'CLOUDNS_AUTH_ID=57908',
-            'CLOUDNS_AUTH_PASSWORD="CHANGE_ME"',
-            'CLOUDNS_API_URL=https://api.cloudns.net',
-        ];
-
-        return response(implode(PHP_EOL, $example), 200, [
-            'Content-Type' => 'text/plain',
-            'Content-Disposition' => 'attachment; filename="sentinelcore.env.example"',
-        ]);
+        return $this->renderWorkspacePage(
+            'Error Logs',
+            'Developer-friendly error log and debugging section.',
+            'fa-solid fa-file-lines',
+            'error-logs'
+        );
     }
 
-    private function servers()
+    public function safeTerminal()
     {
-        if (!class_exists(Server::class) || !Schema::hasTable('servers')) {
-            return collect();
-        }
-
-        return Server::latest()->get();
+        return $this->renderWorkspacePage(
+            'Safe Terminal',
+            'Run only approved commands. Full unrestricted terminal is disabled.',
+            'fa-solid fa-square-terminal',
+            'safe-terminal'
+        );
     }
 
-    private function runCommand(string $command): string
+    public function laravelTools()
     {
-        $basePath = base_path();
-
-        $safeCommand = 'cd ' . escapeshellarg($basePath) . ' && ' . $command;
-
-        $output = shell_exec($safeCommand);
-
-        return trim($output ?? '');
+        return $this->renderWorkspacePage(
+            'Laravel Tools',
+            'Laravel cache, route, config, composer and migration tools.',
+            'fa-brands fa-laravel',
+            'laravel-tools'
+        );
     }
 
-    private function ensureGitRepository(): void
+    public function frontendTools()
     {
-        if (!File::exists(base_path('.git'))) {
-            throw new \Exception('This project is not a Git repository.');
-        }
+        return $this->renderWorkspacePage(
+            'Frontend Build Tools',
+            'React, Vue, Angular, Node and NPM build tools.',
+            'fa-brands fa-react',
+            'frontend-tools'
+        );
     }
 
-    private function routeByDomain(string $action): string
+    public function pythonTools()
     {
-        $host = request()->getHost();
-
-        $domainMap = [
-            'git.pull' => 'developer.domain.git.pull',
-            'clear.cache' => 'developer.domain.clear.cache',
-            'composer.dump' => 'developer.domain.composer.dump',
-            'npm.build' => 'developer.domain.npm.build',
-        ];
-
-        $normalMap = [
-            'git.pull' => 'developers.git.pull',
-            'clear.cache' => 'developers.clear.cache',
-            'composer.dump' => 'developers.composer.dump',
-            'npm.build' => 'developers.npm.build',
-        ];
-
-        if ($host === 'developercodes.webscepts.com' && isset($domainMap[$action]) && app('router')->has($domainMap[$action])) {
-            return route($domainMap[$action]);
-        }
-
-        if (isset($normalMap[$action]) && app('router')->has($normalMap[$action])) {
-            return route($normalMap[$action]);
-        }
-
-        return '#';
+        return $this->renderWorkspacePage(
+            'Python Tools',
+            'Python, Flask, Django and FastAPI developer tools.',
+            'fa-brands fa-python',
+            'python-tools'
+        );
     }
 
-    private function safeFolders(): array
+    public function deployment()
     {
-        return [
-            [
-                'label' => 'Controllers',
-                'path' => 'app/Http/Controllers',
-                'icon' => 'fa-code',
-            ],
-            [
-                'label' => 'Models',
-                'path' => 'app/Models',
-                'icon' => 'fa-database',
-            ],
-            [
-                'label' => 'Services',
-                'path' => 'app/Services',
-                'icon' => 'fa-gears',
-            ],
-            [
-                'label' => 'Console Commands',
-                'path' => 'app/Console/Commands',
-                'icon' => 'fa-terminal',
-            ],
-            [
-                'label' => 'Blade Views',
-                'path' => 'resources/views',
-                'icon' => 'fa-file-code',
-            ],
-            [
-                'label' => 'Routes',
-                'path' => 'routes',
-                'icon' => 'fa-route',
-            ],
-            [
-                'label' => 'Migrations',
-                'path' => 'database/migrations',
-                'icon' => 'fa-table',
-            ],
-            [
-                'label' => 'Sentinel Python',
-                'path' => 'sentinelcore/python',
-                'icon' => 'fa-brands fa-python',
-            ],
-        ];
+        return $this->renderWorkspacePage(
+            'Deployment',
+            'Deploy command notes, post-deploy checks and rollback information.',
+            'fa-solid fa-rocket',
+            'deployment'
+        );
     }
 
-    public function codeEditor()
+    public function healthCheck()
     {
-        $developer = auth()->guard('developer')->user();
+        return $this->renderWorkspacePage(
+            'Health Check',
+            'Website, SSL, disk and performance status checks.',
+            'fa-solid fa-heart-pulse',
+            'health-check'
+        );
+    }
+
+    public function securityNotes()
+    {
+        return $this->renderWorkspacePage(
+            'Security Notes',
+            'Safe development security notes, restricted access and permission details.',
+            'fa-solid fa-shield-halved',
+            'security-notes'
+        );
+    }
+
+    public function backupStatus()
+    {
+        return $this->renderWorkspacePage(
+            'Backup Status',
+            'Backup notes and project protection status.',
+            'fa-solid fa-cloud-arrow-up',
+            'backup-status'
+        );
+    }
+
+    public function permissions()
+    {
+        return $this->renderWorkspacePage(
+            'Permissions',
+            'View allowed and disabled developer actions.',
+            'fa-solid fa-user-shield',
+            'permissions'
+        );
+    }
+
+    public function accountSettings()
+    {
+        return $this->renderWorkspacePage(
+            'Account Settings',
+            'Developer profile, cPanel username, project path and login details.',
+            'fa-solid fa-user-gear',
+            'account-settings'
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Web VS Code / Code Editor
+    |--------------------------------------------------------------------------
+    | Developer opens:
+    | https://developercodes.webscepts.com/codeditor
+    |
+    | Laravel checks developer login + permission, then redirects to:
+    | VSCODE_WEB_URL=https://code.devteengirls.lk
+    |--------------------------------------------------------------------------
+    */
+
+  public function codeEditor()
+{
+    $developer = $this->developer();
+
+    if (!$developer) {
+        return redirect()->route('developer.login');
+    }
+
+    if (!$this->can($developer, 'can_view_files')) {
+        return redirect()
+            ->route('developer.domain.workspace')
+            ->with('error', 'You do not have permission to access the code editor.');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Per developer editor URL
+    |--------------------------------------------------------------------------
+    | Public URL stays:
+    | https://developercodes.webscepts.com/codeditor
+    |
+    | Backend editor URL changes by developer account:
+    | developer_users.code_editor_url
+    |--------------------------------------------------------------------------
+    */
+
+    $editorBackendUrl = $developer->code_editor_url
+        ?: config('services.vscode.url')
+        ?: env('VSCODE_WEB_URL')
+        ?: null;
+
+    if (!$editorBackendUrl) {
+        return redirect()
+            ->route('developer.domain.workspace')
+            ->with('error', 'Code editor URL is not configured for this developer account.');
+    }
+
+    return view('developers.codeditor', [
+        'editorBackendUrl' => $editorBackendUrl,
+        'developer' => $developer,
+    ]);
+}
+
+    /*
+    |--------------------------------------------------------------------------
+    | Safe Developer Actions
+    |--------------------------------------------------------------------------
+    */
+
+    public function gitPull(Request $request)
+    {
+        $developer = $this->developer();
 
         if (!$developer) {
             return redirect()->route('developer.login');
         }
 
-        if (isset($developer->can_view_files) && !$developer->can_view_files) {
-            return redirect()
-                ->route('developer.domain.workspace')
-                ->with('error', 'You do not have permission to access the code editor.');
+        if (!$this->can($developer, 'can_git_pull')) {
+            return back()->with('error', 'Git Pull permission is disabled.');
         }
 
-        $vscodeUrl = config('services.vscode.url') ?: env('VSCODE_WEB_URL');
+        $projectRoot = $this->projectRoot($developer);
 
-        if (!$vscodeUrl) {
-            return redirect()
-                ->route('developer.domain.workspace')
-                ->with('error', 'Web VS Code URL is not configured. Please add VSCODE_WEB_URL in .env.');
+        if (!$this->validProjectPath($projectRoot)) {
+            return back()->with('error', 'Project path is invalid or not accessible.');
         }
 
-        return redirect()->away($vscodeUrl);
+        if (!is_dir($projectRoot . '/.git')) {
+            return back()->with('error', 'This project folder is not a Git repository.');
+        }
+
+        $result = $this->runSafeCommand('git pull --ff-only', $projectRoot, 120);
+
+        return $this->commandResponse($result, 'Git pull completed successfully.');
     }
 
-    private function resolveSafeFolder(string $relativePath): ?string
+    public function clearCache(Request $request)
     {
-        $allowed = collect($this->safeFolders())->pluck('path')->toArray();
+        $developer = $this->developer();
 
-        $relativePath = trim($relativePath, '/');
-
-        if (!in_array($relativePath, $allowed, true)) {
-            return null;
+        if (!$developer) {
+            return redirect()->route('developer.login');
         }
 
-        $fullPath = base_path($relativePath);
-
-        if (!File::isDirectory($fullPath)) {
-            return null;
+        if (!$this->can($developer, 'can_clear_cache')) {
+            return back()->with('error', 'Clear Cache permission is disabled.');
         }
 
-        return $fullPath;
+        $projectRoot = $this->projectRoot($developer);
+
+        if (!$this->validProjectPath($projectRoot)) {
+            return back()->with('error', 'Project path is invalid or not accessible.');
+        }
+
+        if (file_exists($projectRoot . '/artisan')) {
+            $command = 'php artisan optimize:clear && php artisan config:clear && php artisan route:clear && php artisan view:clear';
+        } else {
+            $command = 'rm -rf bootstrap/cache/*.php storage/framework/cache/data/* storage/framework/views/* 2>/dev/null || true';
+        }
+
+        $result = $this->runSafeCommand($command, $projectRoot, 120);
+
+        return $this->commandResponse($result, 'Project cache cleared successfully.');
+    }
+
+    public function composerDump(Request $request)
+    {
+        $developer = $this->developer();
+
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        if (!$this->can($developer, 'can_composer')) {
+            return back()->with('error', 'Composer permission is disabled.');
+        }
+
+        $projectRoot = $this->projectRoot($developer);
+
+        if (!$this->validProjectPath($projectRoot)) {
+            return back()->with('error', 'Project path is invalid or not accessible.');
+        }
+
+        if (!file_exists($projectRoot . '/composer.json')) {
+            return back()->with('error', 'composer.json was not found in the project path.');
+        }
+
+        $result = $this->runSafeCommand('composer dump-autoload -o', $projectRoot, 180);
+
+        return $this->commandResponse($result, 'Composer dump-autoload completed successfully.');
+    }
+
+    public function npmBuild(Request $request)
+    {
+        $developer = $this->developer();
+
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        if (!$this->can($developer, 'can_npm') && !$this->can($developer, 'can_run_build')) {
+            return back()->with('error', 'NPM Build permission is disabled.');
+        }
+
+        $projectRoot = $this->projectRoot($developer);
+
+        if (!$this->validProjectPath($projectRoot)) {
+            return back()->with('error', 'Project path is invalid or not accessible.');
+        }
+
+        if (!file_exists($projectRoot . '/package.json')) {
+            return back()->with('error', 'package.json was not found in the project path.');
+        }
+
+        $command = 'npm install && npm run build';
+
+        $result = $this->runSafeCommand($command, $projectRoot, 600);
+
+        return $this->commandResponse($result, 'NPM build completed successfully.');
+    }
+
+    public function openFolder(Request $request)
+    {
+        $developer = $this->developer();
+
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        if (!$this->can($developer, 'can_view_files')) {
+            return back()->with('error', 'File access permission is disabled.');
+        }
+
+        return redirect()->route('developer.domain.codeditor');
+    }
+
+    public function downloadEnvExample()
+    {
+        $developer = $this->developer();
+
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        $projectName = $developer->cpanel_domain
+            ?? $developer->cpanel_username
+            ?? 'developer-project';
+
+                    $dbType = $developer->db_type ?? 'mysql';
+                    $dbHost = $developer->db_host ?? '127.0.0.1';
+                    $dbPort = $developer->db_port ?? ($dbType === 'postgresql' ? '5432' : '3306');
+                    $dbName = $developer->db_name ?? '';
+                    $dbUser = $developer->db_username ?? '';
+
+                    $env = <<<ENV
+            APP_NAME="{$projectName}"
+            APP_ENV=production
+            APP_KEY=
+            APP_DEBUG=false
+            APP_URL=https://{$projectName}
+
+            LOG_CHANNEL=stack
+            LOG_LEVEL=error
+
+            DB_CONNECTION={$dbType}
+            DB_HOST={$dbHost}
+            DB_PORT={$dbPort}
+            DB_DATABASE={$dbName}
+            DB_USERNAME={$dbUser}
+            DB_PASSWORD=
+
+            CACHE_DRIVER=file
+            SESSION_DRIVER=file
+            QUEUE_CONNECTION=sync
+
+            MAIL_MAILER=smtp
+            MAIL_HOST=
+            MAIL_PORT=587
+            MAIL_USERNAME=
+            MAIL_PASSWORD=
+            MAIL_ENCRYPTION=tls
+            MAIL_FROM_ADDRESS=
+            MAIL_FROM_NAME="\${APP_NAME}"
+
+            # IMPORTANT:
+            # This is only an example file.
+            # Do not expose real passwords, API keys, tokens, or APP_KEY publicly.
+            ENV;
+
+        $fileName = 'env-example-' . Str::slug($projectName) . '.txt';
+
+        return Response::make($env, 200, [
+            'Content-Type' => 'text/plain',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Render Workspace View
+    |--------------------------------------------------------------------------
+    */
+
+    private function renderWorkspacePage(string $title, string $description, string $icon, string $page)
+    {
+        $developer = $this->developer();
+
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        $projectRoot = $this->projectRoot($developer);
+
+        return view('developers.workspace', [
+            'pageTitle' => $title,
+            'pageDescription' => $description,
+            'pageIcon' => $icon,
+            'activeDeveloperPage' => $page,
+            'gitBranch' => $this->gitBranch($projectRoot),
+            'projectRoot' => $projectRoot,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    private function developer()
+    {
+        return auth()->guard('developer')->user();
+    }
+
+    private function can($developer, string $permission): bool
+    {
+        if (!$developer) {
+            return false;
+        }
+
+        $table = $developer->getTable();
+
+        if (Schema::hasColumn($table, $permission)) {
+            return (bool) $developer->{$permission};
+        }
+
+        return false;
+    }
+
+    private function projectRoot($developer): string
+    {
+        $path = $developer->project_root
+            ?? $developer->allowed_project_path
+            ?? null;
+
+        if (!$path) {
+            $username = $developer->cpanel_username
+                ?? $developer->ssh_username
+                ?? 'developer';
+
+            $path = '/home/' . $username . '/public_html';
+        }
+
+        return rtrim($path, '/');
+    }
+
+    private function validProjectPath(?string $path): bool
+    {
+        if (!$path) {
+            return false;
+        }
+
+        $path = rtrim($path, '/');
+
+        if (!str_starts_with($path, '/home/') && !str_starts_with($path, '/var/www/')) {
+            return false;
+        }
+
+        return is_dir($path);
+    }
+
+    private function gitBranch(string $projectRoot): string
+    {
+        if (!$this->validProjectPath($projectRoot)) {
+            return 'unknown';
+        }
+
+        if (!is_dir($projectRoot . '/.git')) {
+            return 'not-git';
+        }
+
+        $result = $this->runSafeCommand('git rev-parse --abbrev-ref HEAD', $projectRoot, 20);
+
+        if (!$result['success']) {
+            return 'unknown';
+        }
+
+        return trim($result['output']) ?: 'unknown';
+    }
+
+    private function runSafeCommand(string $command, string $workingDirectory, int $timeout = 120): array
+    {
+        try {
+            $process = Process::fromShellCommandline($command, $workingDirectory);
+            $process->setTimeout($timeout);
+            $process->run();
+
+            $output = trim($process->getOutput() . "\n" . $process->getErrorOutput());
+
+            return [
+                'success' => $process->isSuccessful(),
+                'exit_code' => $process->getExitCode(),
+                'output' => $output ?: 'No output returned.',
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'exit_code' => 1,
+                'output' => $e->getMessage(),
+            ];
+        }
+    }
+
+    private function commandResponse(array $result, string $successMessage)
+    {
+        if ($result['success']) {
+            return back()
+                ->with('success', $successMessage)
+                ->with('command_output', $result['output']);
+        }
+
+        return back()
+            ->with('error', 'Command failed: ' . Str::limit($result['output'], 1000))
+            ->with('command_output', $result['output']);
     }
 }

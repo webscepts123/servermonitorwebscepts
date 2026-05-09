@@ -42,9 +42,13 @@ return [
     ],
 
     'cloudns' => [
-    'auth_id' => env('CLOUDNS_AUTH_ID'),
-    'auth_password' => env('CLOUDNS_AUTH_PASSWORD'),
-    'api_url' => env('CLOUDNS_API_URL', 'https://api.cloudns.net'),
-],
+        'auth_id' => env('CLOUDNS_AUTH_ID'),
+        'auth_password' => env('CLOUDNS_AUTH_PASSWORD'),
+        'api_url' => env('CLOUDNS_API_URL', 'https://api.cloudns.net'),
+    ],
+
+    'vscode' => [
+        'url' => env('VSCODE_WEB_URL'),
+    ],
 
 ];
