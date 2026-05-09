@@ -350,6 +350,8 @@ class DeveloperWorkspaceController extends Controller
         ];
     }
 
+ 
+
     private function resolveSafeFolder(string $relativePath): ?string
     {
         $allowed = collect($this->safeFolders())->pluck('path')->toArray();
