@@ -22,8 +22,9 @@ use App\Http\Controllers\DeveloperCpanelImportController;
 |--------------------------------------------------------------------------
 | Developer Codes Subdomain
 |--------------------------------------------------------------------------
-| Separate developer login:
-| https://developercodes.webscepts.com
+| Public developer portal:
+| https://developercodes.webscepts.com/login
+| https://developercodes.webscepts.com/workspace
 |--------------------------------------------------------------------------
 */
 
@@ -75,7 +76,7 @@ Route::domain('developercodes.webscepts.com')
 
 /*
 |--------------------------------------------------------------------------
-| Main Authentication Routes
+| Main Admin Login Routes
 |--------------------------------------------------------------------------
 */
 
@@ -517,7 +518,7 @@ Route::middleware(['auth'])->group(function () {
     |--------------------------------------------------------------------------
     | Admin Developer Management Routes
     |--------------------------------------------------------------------------
-    | Main admin panel:
+    | Admin panel:
     | https://systemmonitor.webscepts.com/developers/cpanel-import
     |--------------------------------------------------------------------------
     */
@@ -581,7 +582,7 @@ Route::middleware(['auth'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Logout
+    | Admin Logout
     |--------------------------------------------------------------------------
     */
 
