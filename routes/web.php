@@ -31,6 +31,14 @@ Route::domain('developercodes.webscepts.com')
     ->middleware(['web'])
     ->group(function () {
 
+        Route::get('/', function () {
+            if (auth()->guard('developer')->check()) {
+                return redirect()->route('developer.domain.workspace');
+            }
+
+            return redirect()->route('developer.login');
+        })->name('developer.home');
+
         Route::get('/login', [DeveloperAuthController::class, 'showLogin'])
             ->name('developer.login');
 
@@ -42,11 +50,8 @@ Route::domain('developercodes.webscepts.com')
 
         Route::middleware(['developer.auth'])->group(function () {
 
-            Route::get('/', [DeveloperWorkspaceController::class, 'index'])
-                ->name('developer.domain.workspace');
-
             Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-                ->name('developer.domain.workspace.page');
+                ->name('developer.domain.workspace');
 
             Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
                 ->name('developer.domain.git.pull');
@@ -508,73 +513,72 @@ Route::middleware(['auth'])->group(function () {
                 ->name('rotate.passwords');
         });
 
-/*
-|--------------------------------------------------------------------------
-| Admin Developer Management Routes
-|--------------------------------------------------------------------------
-| Main admin panel:
-| https://systemmonitor.webscepts.com/developers/cpanel-import
-|--------------------------------------------------------------------------
-*/
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Developer Management Routes
+    |--------------------------------------------------------------------------
+    | Main admin panel:
+    | https://systemmonitor.webscepts.com/developers/cpanel-import
+    |--------------------------------------------------------------------------
+    */
 
-Route::prefix('developers')
-    ->name('developers.')
-    ->group(function () {
+    Route::prefix('developers')
+        ->name('developers.')
+        ->middleware(['throttle:30,1'])
+        ->group(function () {
 
-        Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
-            ->name('workspace');
+            Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
+                ->name('workspace');
 
-        Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
-            ->name('git.pull');
+            Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
+                ->name('git.pull');
 
-        Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
-            ->name('clear.cache');
+            Route::post('/clear-cache', [DeveloperWorkspaceController::class, 'clearCache'])
+                ->name('clear.cache');
 
-        Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
-            ->name('composer.dump');
+            Route::post('/composer-dump', [DeveloperWorkspaceController::class, 'composerDump'])
+                ->name('composer.dump');
 
-        Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
-            ->name('npm.build');
+            Route::post('/npm-build', [DeveloperWorkspaceController::class, 'npmBuild'])
+                ->name('npm.build');
 
-        Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
-            ->name('open.folder');
+            Route::post('/open-folder', [DeveloperWorkspaceController::class, 'openFolder'])
+                ->name('open.folder');
 
-        Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
-            ->name('env.example');
+            Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
+                ->name('env.example');
 
-        Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
-            ->name('cpanel.import');
+            Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
+                ->name('cpanel.import');
 
-        Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
-            ->name('cpanel.sync');
+            Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
+                ->name('cpanel.sync');
 
-        Route::post('/developers/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
-        ->name('developers.toggle');
+            Route::post('/cpanel-login-import', [DeveloperCpanelImportController::class, 'importSingleCpanelLogin'])
+                ->name('cpanel.login.import');
 
-        Route::post('/developers/{developer}/portal-access', [DeveloperCpanelImportController::class, 'portalAccess'])
-            ->name('developers.portal-access');
+            Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
+                ->name('cpanel.bulk.import');
 
-        Route::post('/developers/{developer}/portal-enable', [DeveloperCpanelImportController::class, 'enablePortal'])
-            ->name('developers.portal-enable');
+            Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
+                ->name('reset-password');
 
-        Route::post('/developers/{developer}/portal-disable', [DeveloperCpanelImportController::class, 'disablePortal'])
-            ->name('developers.portal-disable');
+            Route::post('/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
+                ->name('toggle');
 
-        Route::post('/cpanel-login-import', [DeveloperCpanelImportController::class, 'importSingleCpanelLogin'])
-            ->name('cpanel.login.import');
+            Route::post('/{developer}/portal-access', [DeveloperCpanelImportController::class, 'portalAccess'])
+                ->name('portal-access');
 
-        Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
-            ->name('cpanel.bulk.import');
+            Route::post('/{developer}/portal-enable', [DeveloperCpanelImportController::class, 'enablePortal'])
+                ->name('portal-enable');
 
-        Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
-            ->name('reset.password');
+            Route::post('/{developer}/portal-disable', [DeveloperCpanelImportController::class, 'disablePortal'])
+                ->name('portal-disable');
 
-        Route::post('/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
-            ->name('toggle');
+            Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
+                ->name('destroy');
+        });
 
-        Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
-            ->name('destroy');
-    });
     /*
     |--------------------------------------------------------------------------
     | Logout
