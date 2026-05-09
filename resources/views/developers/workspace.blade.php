@@ -5,6 +5,8 @@
 @section('developer-content')
 
 @php
+    use Illuminate\Support\Facades\Route;
+
     $developer = auth()->guard('developer')->user();
 
     $developerName = $developer->name
@@ -55,7 +57,19 @@
     $canMysql = (bool) ($developer->can_mysql ?? false);
     $canPostgresql = (bool) ($developer->can_postgresql ?? false);
 
-    $codeEditorUrl = route('developer.domain.codeditor');
+    /*
+    |--------------------------------------------------------------------------
+    | Code Editor URL
+    |--------------------------------------------------------------------------
+    | This opens:
+    | https://developercodes.webscepts.com/codeditor
+    |
+    | If route is not cached/added yet, fallback keeps page from breaking.
+    |--------------------------------------------------------------------------
+    */
+    $codeEditorUrl = Route::has('developer.domain.codeditor')
+        ? route('developer.domain.codeditor')
+        : url('/codeditor');
 
     $permissions = [
         [
@@ -153,7 +167,7 @@
         <div class="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-blue-500/30 blur-3xl"></div>
         <div class="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-red-500/20 blur-3xl"></div>
 
-        <div class="relative p-7 lg:p-10 grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-8 items-center">
+        <div class="relative p-7 lg:p-10 grid grid-cols-1 xl:grid-cols-[1fr_330px] gap-8 items-center">
             <div>
                 <div class="flex flex-wrap items-center gap-3">
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/20 border border-blue-400/40 text-blue-100 text-xs font-black">
@@ -204,15 +218,16 @@
                 </div>
             </div>
 
+            {{-- Quick Actions --}}
             <div class="space-y-3">
                 <a href="{{ $codeEditorUrl }}"
                    target="_blank"
-                   class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black transition">
+                   class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black transition shadow-lg shadow-blue-950/20">
                     <i class="fa-solid fa-code"></i>
                     Open Web VS Code
                 </a>
 
-                @if($canGitPull)
+                @if($canGitPull && Route::has('developer.domain.git.pull'))
                     <form method="POST" action="{{ route('developer.domain.git.pull') }}">
                         @csrf
                         <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black transition">
@@ -222,7 +237,7 @@
                     </form>
                 @endif
 
-                @if($canClearCache)
+                @if($canClearCache && Route::has('developer.domain.clear.cache'))
                     <form method="POST" action="{{ route('developer.domain.clear.cache') }}">
                         @csrf
                         <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white font-black transition">
@@ -232,7 +247,7 @@
                     </form>
                 @endif
 
-                @if($canComposer)
+                @if($canComposer && Route::has('developer.domain.composer.dump'))
                     <form method="POST" action="{{ route('developer.domain.composer.dump') }}">
                         @csrf
                         <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black transition">
@@ -242,7 +257,7 @@
                     </form>
                 @endif
 
-                @if($canNpm || $canRunBuild)
+                @if(($canNpm || $canRunBuild) && Route::has('developer.domain.npm.build'))
                     <form method="POST" action="{{ route('developer.domain.npm.build') }}">
                         @csrf
                         <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black transition">
@@ -252,13 +267,15 @@
                     </form>
                 @endif
 
-                <form method="POST" action="{{ route('developer.logout') }}">
-                    @csrf
-                    <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black transition">
-                        <i class="fa-solid fa-right-from-bracket"></i>
-                        Developer Logout
-                    </button>
-                </form>
+                @if(Route::has('developer.logout'))
+                    <form method="POST" action="{{ route('developer.logout') }}">
+                        @csrf
+                        <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black transition">
+                            <i class="fa-solid fa-right-from-bracket"></i>
+                            Developer Logout
+                        </button>
+                    </form>
+                @endif
             </div>
         </div>
     </section>
@@ -341,8 +358,8 @@
                 </div>
                 <h3 class="font-black text-slate-900">Browser VS Code</h3>
                 <p class="text-sm text-slate-500 mt-2">
-                    Editor opens using this route:
-                    <span class="font-black text-slate-700">/codeditor</span>
+                    Editor opens using:
+                    <span class="font-black text-slate-700">https://developercodes.webscepts.com/codeditor</span>
                 </p>
             </div>
 
@@ -440,7 +457,7 @@
             <h2 class="text-2xl font-black text-slate-900">Git & Project Commands</h2>
 
             <div class="mt-5 space-y-3">
-                @if($canGitPull)
+                @if($canGitPull && Route::has('developer.domain.git.pull'))
                     <form method="POST" action="{{ route('developer.domain.git.pull') }}">
                         @csrf
                         <button class="w-full px-5 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
@@ -454,7 +471,7 @@
                     </div>
                 @endif
 
-                @if($canClearCache)
+                @if($canClearCache && Route::has('developer.domain.clear.cache'))
                     <form method="POST" action="{{ route('developer.domain.clear.cache') }}">
                         @csrf
                         <button class="w-full px-5 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black">
@@ -464,7 +481,7 @@
                     </form>
                 @endif
 
-                @if($canComposer)
+                @if($canComposer && Route::has('developer.domain.composer.dump'))
                     <form method="POST" action="{{ route('developer.domain.composer.dump') }}">
                         @csrf
                         <button class="w-full px-5 py-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black">
@@ -474,7 +491,7 @@
                     </form>
                 @endif
 
-                @if($canNpm || $canRunBuild)
+                @if(($canNpm || $canRunBuild) && Route::has('developer.domain.npm.build'))
                     <form method="POST" action="{{ route('developer.domain.npm.build') }}">
                         @csrf
                         <button class="w-full px-5 py-4 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black">

@@ -350,7 +350,30 @@ class DeveloperWorkspaceController extends Controller
         ];
     }
 
- 
+    public function codeEditor()
+    {
+        $developer = auth()->guard('developer')->user();
+
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        if (isset($developer->can_view_files) && !$developer->can_view_files) {
+            return redirect()
+                ->route('developer.domain.workspace')
+                ->with('error', 'You do not have permission to access the code editor.');
+        }
+
+        $vscodeUrl = config('services.vscode.url') ?: env('VSCODE_WEB_URL');
+
+        if (!$vscodeUrl) {
+            return redirect()
+                ->route('developer.domain.workspace')
+                ->with('error', 'Web VS Code URL is not configured. Please add VSCODE_WEB_URL in .env.');
+        }
+
+        return redirect()->away($vscodeUrl);
+    }
 
     private function resolveSafeFolder(string $relativePath): ?string
     {
