@@ -37,6 +37,10 @@
 
     $loadedServerId = session('cpanel_accounts_server_id');
     $developerUrl = 'https://developercodes.webscepts.com/login';
+    $publicCodeEditorUrl = 'https://developercodes.webscepts.com/codeditor';
+
+    $syncRoute = Route::has('developers.cpanel.sync') ? route('developers.cpanel.sync') : '#';
+    $bulkImportRoute = Route::has('developers.cpanel.bulk.import') ? route('developers.cpanel.bulk.import') : '#';
 
     $portalIsActive = function ($developer) {
         return (bool) (
@@ -48,6 +52,34 @@
         );
     };
 
+    $editorUrlForUser = function ($username, $domain = null, $account = []) {
+        $existing = $account['code_editor_url']
+            ?? $account['vscode_url']
+            ?? null;
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $username = strtolower(trim((string) $username));
+
+        if ($username) {
+            return 'https://code-' . $username . '.webscepts.com';
+        }
+
+        $domain = strtolower(trim((string) $domain));
+
+        if ($domain && $domain !== '-') {
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = preg_replace('#/.*$#', '', $domain);
+            $domain = str_replace([':', '_'], '-', $domain);
+
+            return 'https://code-' . $domain;
+        }
+
+        return '';
+    };
+
     $developerCount = method_exists($developers, 'count') ? $developers->count() : 0;
 
     $activeDeveloperCount = method_exists($developers, 'filter')
@@ -55,9 +87,6 @@
         : 0;
 
     $disabledDeveloperCount = max($developerCount - $activeDeveloperCount, 0);
-
-    $syncRoute = Route::has('developers.cpanel.sync') ? route('developers.cpanel.sync') : '#';
-    $bulkImportRoute = Route::has('developers.cpanel.bulk.import') ? route('developers.cpanel.bulk.import') : '#';
 
     $frameworkBadge = function ($framework) {
         return match ($framework) {
@@ -201,6 +230,8 @@
 
             <pre id="createdPasswordsBox" class="relative mt-5 bg-black/40 border border-white/10 rounded-2xl p-5 overflow-auto text-xs whitespace-pre-wrap">@foreach(session('created_logins') as $login)
 URL: {{ $login['url'] ?? $developerUrl }}
+Code Editor Public URL: {{ $login['codeditor'] ?? $publicCodeEditorUrl }}
+Backend Editor URL: {{ $login['code_editor_url'] ?? '-' }}
 Login: {{ $login['login'] ?? '-' }}
 Email: {{ $login['email'] ?? '-' }}
 Domain: {{ $login['domain'] ?? '-' }}
@@ -236,19 +267,23 @@ Password: {{ $login['password'] ?? '-' }}
                     </span>
 
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-black">
-                        <i class="fa-solid fa-toggle-on"></i>
-                        Portal Access Control
+                        <i class="fa-solid fa-code"></i>
+                        Per Account VS Code
                     </span>
                 </div>
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
-                    Fetch cPanel accounts, choose project frameworks, assign permissions, and turn Developer Portal access
-                    ON or OFF for each developer account.
+                    Fetch cPanel accounts, choose project frameworks, set each account’s Code Editor URL, assign permissions,
+                    and turn Developer Portal access ON or OFF.
                 </p>
 
                 <div class="mt-5 flex flex-wrap gap-2">
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
                         Portal: {{ $developerUrl }}
+                    </span>
+
+                    <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
+                        Public Editor Route: {{ $publicCodeEditorUrl }}
                     </span>
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
@@ -403,7 +438,7 @@ Password: {{ $login['password'] ?? '-' }}
                     <div>
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
-                            Tick accounts, choose framework, permissions, and set Developer Portal access ON/OFF.
+                            Tick accounts, choose framework, add per-account Code Editor URL, permissions, and set Developer Portal access ON/OFF.
                         </p>
                     </div>
 
@@ -473,7 +508,7 @@ Password: {{ $login['password'] ?? '-' }}
                 </div>
 
                 <div class="overflow-x-auto soft-scrollbar">
-                    <table class="w-full min-w-[1900px] text-sm">
+                    <table class="w-full min-w-[2300px] text-sm">
                         <thead class="bg-slate-100">
                             <tr>
                                 <th class="p-4 text-left w-16">Select</th>
@@ -481,6 +516,7 @@ Password: {{ $login['password'] ?? '-' }}
                                 <th class="p-4 text-left">Server</th>
                                 <th class="p-4 text-left">Framework</th>
                                 <th class="p-4 text-left">Project Root</th>
+                                <th class="p-4 text-left">Code Editor URL</th>
                                 <th class="p-4 text-left">Developer Portal</th>
                                 <th class="p-4 text-left">Commands</th>
                                 <th class="p-4 text-left">Permissions</th>
@@ -499,7 +535,22 @@ Password: {{ $login['password'] ?? '-' }}
                                     $existingDeveloper = $developers[$username] ?? null;
                                     $alreadyExists = !empty($existingDeveloper);
                                     $portalActive = $existingDeveloper ? $portalIsActive($existingDeveloper) : true;
-                                    $searchText = strtolower(($domain ?? '') . ' ' . ($username ?? '') . ' ' . ($email ?? '') . ' ' . ($account['ip'] ?? '') . ' ' . ($account['plan'] ?? '') . ' ' . $framework);
+
+                                    $currentEditorUrl = $existingDeveloper
+                                        ? ($existingDeveloper->code_editor_url ?? $existingDeveloper->vscode_url ?? null)
+                                        : null;
+
+                                    $editorUrl = $currentEditorUrl ?: $editorUrlForUser($username, $domain, $account);
+
+                                    $searchText = strtolower(
+                                        ($domain ?? '') . ' ' .
+                                        ($username ?? '') . ' ' .
+                                        ($email ?? '') . ' ' .
+                                        ($account['ip'] ?? '') . ' ' .
+                                        ($account['plan'] ?? '') . ' ' .
+                                        $framework . ' ' .
+                                        $editorUrl
+                                    );
                                 @endphp
 
                                 <tr class="cpanel-account-row hover:bg-slate-50 transition"
@@ -574,6 +625,24 @@ Password: {{ $login['password'] ?? '-' }}
 
                                         <div class="text-xs text-slate-500 mt-2">
                                             Home: {{ $account['home'] ?? '/home/' . $username }}
+                                        </div>
+                                    </td>
+
+                                    <td class="p-4 align-top">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                                <i class="fa-solid fa-code"></i>
+                                            </div>
+
+                                            <input type="text"
+                                                   name="accounts[{{ $username }}][code_editor_url]"
+                                                   value="{{ $editorUrl }}"
+                                                   placeholder="https://code-{{ strtolower($username) }}.webscepts.com"
+                                                   class="w-96 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-xs">
+                                        </div>
+
+                                        <div class="text-xs text-slate-500 mt-2 max-w-[420px]">
+                                            Developer opens <span class="font-black">{{ $publicCodeEditorUrl }}</span>, but backend editor loads this URL.
                                         </div>
                                     </td>
 
@@ -724,7 +793,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div class="p-6 border-t bg-slate-50 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div class="text-sm text-slate-500 font-bold">
-                        Selected users will be created as Developer Codes accounts with their chosen framework, permissions, database access and portal access status.
+                        Selected users will be created as Developer Codes accounts with their chosen framework, permissions, database access, portal status and per-account Code Editor URL.
                     </div>
 
                     <button class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
@@ -760,12 +829,12 @@ Password: {{ $login['password'] ?? '-' }}
             <input type="text"
                    id="developerSearch"
                    oninput="filterRows('developerSearch', '.developer-row')"
-                   placeholder="Search developers, framework, domain..."
+                   placeholder="Search developers, framework, domain, editor URL..."
                    class="w-full xl:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
         <div class="overflow-x-auto soft-scrollbar">
-            <table class="w-full min-w-[1500px] text-sm">
+            <table class="w-full min-w-[1750px] text-sm">
                 <thead class="bg-slate-100">
                     <tr>
                         <th class="p-4 text-left">Developer</th>
@@ -773,6 +842,7 @@ Password: {{ $login['password'] ?? '-' }}
                         <th class="p-4 text-left">Domain</th>
                         <th class="p-4 text-left">Framework</th>
                         <th class="p-4 text-left">Project Root</th>
+                        <th class="p-4 text-left">Code Editor</th>
                         <th class="p-4 text-left">Permissions</th>
                         <th class="p-4 text-left">Portal Access</th>
                         <th class="p-4 text-right">Actions</th>
@@ -783,12 +853,18 @@ Password: {{ $login['password'] ?? '-' }}
                     @forelse($developers as $developer)
                         @php
                             $developerPortalEnabled = $portalIsActive($developer);
+
+                            $developerEditorUrl = $developer->code_editor_url
+                                ?? $developer->vscode_url
+                                ?? null;
+
                             $developerSearchText = strtolower(
                                 ($developer->name ?? '') . ' ' .
                                 ($developer->email ?? '') . ' ' .
                                 ($developer->cpanel_username ?? '') . ' ' .
                                 ($developer->cpanel_domain ?? '') . ' ' .
-                                ($developer->framework ?? '')
+                                ($developer->framework ?? '') . ' ' .
+                                ($developerEditorUrl ?? '')
                             );
 
                             $toggleRoute = Route::has('developers.toggle') ? route('developers.toggle', $developer->id) : '#';
@@ -834,6 +910,21 @@ Password: {{ $login['password'] ?? '-' }}
                             <td class="p-4 align-top">
                                 <div class="text-xs font-bold text-slate-700 max-w-[300px] break-all">
                                     {{ $developer->project_root ?? $developer->allowed_project_path ?? '-' }}
+                                </div>
+                            </td>
+
+                            <td class="p-4 align-top">
+                                <div class="flex flex-col gap-2">
+                                    <a href="{{ $publicCodeEditorUrl }}"
+                                       target="_blank"
+                                       class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
+                                        <i class="fa-solid fa-code"></i>
+                                        Open Public Editor
+                                    </a>
+
+                                    <div class="text-xs text-slate-500 max-w-[320px] break-all">
+                                        Backend: {{ $developerEditorUrl ?: 'Not set' }}
+                                    </div>
                                 </div>
                             </td>
 
@@ -925,7 +1016,7 @@ Password: {{ $login['password'] ?? '-' }}
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="p-10 text-center">
+                            <td colspan="9" class="p-10 text-center">
                                 <div class="w-20 h-20 mx-auto rounded-3xl bg-slate-100 text-slate-600 flex items-center justify-center">
                                     <i class="fa-solid fa-user-shield text-3xl"></i>
                                 </div>

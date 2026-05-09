@@ -190,56 +190,44 @@ class DeveloperWorkspaceController extends Controller
     |--------------------------------------------------------------------------
     | Web VS Code / Code Editor
     |--------------------------------------------------------------------------
-    | Developer opens:
+    | Public developer URL:
     | https://developercodes.webscepts.com/codeditor
     |
-    | Laravel checks developer login + permission, then redirects to:
-    | VSCODE_WEB_URL=https://code.devteengirls.lk
+    | Backend editor URL:
+    | developer_users.code_editor_url first
+    | developer_users.vscode_url fallback if column exists
+    | .env VSCODE_WEB_URL only final fallback
     |--------------------------------------------------------------------------
     */
 
-  public function codeEditor()
-{
-    $developer = $this->developer();
+    public function codeEditor()
+    {
+        $developer = $this->developer();
 
-    if (!$developer) {
-        return redirect()->route('developer.login');
+        if (!$developer) {
+            return redirect()->route('developer.login');
+        }
+
+        if (!$this->can($developer, 'can_view_files')) {
+            return redirect()
+                ->route('developer.domain.workspace')
+                ->with('error', 'You do not have permission to access the code editor.');
+        }
+
+        $editorBackendUrl = $this->developerCodeEditorUrl($developer);
+
+        if (!$editorBackendUrl) {
+            return redirect()
+                ->route('developer.domain.workspace')
+                ->with('error', 'Code editor URL is not configured for this developer account.');
+        }
+
+        return view('developers.codeditor', [
+            'developer' => $developer,
+            'editorBackendUrl' => $editorBackendUrl,
+            'projectRoot' => $this->projectRoot($developer),
+        ]);
     }
-
-    if (!$this->can($developer, 'can_view_files')) {
-        return redirect()
-            ->route('developer.domain.workspace')
-            ->with('error', 'You do not have permission to access the code editor.');
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Per developer editor URL
-    |--------------------------------------------------------------------------
-    | Public URL stays:
-    | https://developercodes.webscepts.com/codeditor
-    |
-    | Backend editor URL changes by developer account:
-    | developer_users.code_editor_url
-    |--------------------------------------------------------------------------
-    */
-
-    $editorBackendUrl = $developer->code_editor_url
-        ?: config('services.vscode.url')
-        ?: env('VSCODE_WEB_URL')
-        ?: null;
-
-    if (!$editorBackendUrl) {
-        return redirect()
-            ->route('developer.domain.workspace')
-            ->with('error', 'Code editor URL is not configured for this developer account.');
-    }
-
-    return view('developers.codeditor', [
-        'editorBackendUrl' => $editorBackendUrl,
-        'developer' => $developer,
-    ]);
-}
 
     /*
     |--------------------------------------------------------------------------
@@ -386,46 +374,46 @@ class DeveloperWorkspaceController extends Controller
             ?? $developer->cpanel_username
             ?? 'developer-project';
 
-                    $dbType = $developer->db_type ?? 'mysql';
-                    $dbHost = $developer->db_host ?? '127.0.0.1';
-                    $dbPort = $developer->db_port ?? ($dbType === 'postgresql' ? '5432' : '3306');
-                    $dbName = $developer->db_name ?? '';
-                    $dbUser = $developer->db_username ?? '';
+        $dbType = $developer->db_type ?? 'mysql';
+        $dbHost = $developer->db_host ?? '127.0.0.1';
+        $dbPort = $developer->db_port ?? ($dbType === 'postgresql' ? '5432' : '3306');
+        $dbName = $developer->db_name ?? '';
+        $dbUser = $developer->db_username ?? '';
 
-                    $env = <<<ENV
-            APP_NAME="{$projectName}"
-            APP_ENV=production
-            APP_KEY=
-            APP_DEBUG=false
-            APP_URL=https://{$projectName}
+        $env = <<<ENV
+APP_NAME="{$projectName}"
+APP_ENV=production
+APP_KEY=
+APP_DEBUG=false
+APP_URL=https://{$projectName}
 
-            LOG_CHANNEL=stack
-            LOG_LEVEL=error
+LOG_CHANNEL=stack
+LOG_LEVEL=error
 
-            DB_CONNECTION={$dbType}
-            DB_HOST={$dbHost}
-            DB_PORT={$dbPort}
-            DB_DATABASE={$dbName}
-            DB_USERNAME={$dbUser}
-            DB_PASSWORD=
+DB_CONNECTION={$dbType}
+DB_HOST={$dbHost}
+DB_PORT={$dbPort}
+DB_DATABASE={$dbName}
+DB_USERNAME={$dbUser}
+DB_PASSWORD=
 
-            CACHE_DRIVER=file
-            SESSION_DRIVER=file
-            QUEUE_CONNECTION=sync
+CACHE_DRIVER=file
+SESSION_DRIVER=file
+QUEUE_CONNECTION=sync
 
-            MAIL_MAILER=smtp
-            MAIL_HOST=
-            MAIL_PORT=587
-            MAIL_USERNAME=
-            MAIL_PASSWORD=
-            MAIL_ENCRYPTION=tls
-            MAIL_FROM_ADDRESS=
-            MAIL_FROM_NAME="\${APP_NAME}"
+MAIL_MAILER=smtp
+MAIL_HOST=
+MAIL_PORT=587
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=
+MAIL_FROM_NAME="\${APP_NAME}"
 
-            # IMPORTANT:
-            # This is only an example file.
-            # Do not expose real passwords, API keys, tokens, or APP_KEY publicly.
-            ENV;
+# IMPORTANT:
+# This is only an example file.
+# Do not expose real passwords, API keys, tokens, or APP_KEY publicly.
+ENV;
 
         $fileName = 'env-example-' . Str::slug($projectName) . '.txt';
 
@@ -458,6 +446,7 @@ class DeveloperWorkspaceController extends Controller
             'activeDeveloperPage' => $page,
             'gitBranch' => $this->gitBranch($projectRoot),
             'projectRoot' => $projectRoot,
+            'editorBackendUrl' => $this->developerCodeEditorUrl($developer),
         ]);
     }
 
@@ -484,7 +473,79 @@ class DeveloperWorkspaceController extends Controller
             return (bool) $developer->{$permission};
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | If permission column is missing, keep safe default false.
+        |--------------------------------------------------------------------------
+        */
+
         return false;
+    }
+
+    private function developerCodeEditorUrl($developer): ?string
+    {
+        if (!$developer) {
+            return null;
+        }
+
+        $table = $developer->getTable();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Per-account editor URL
+        |--------------------------------------------------------------------------
+        | Preferred column:
+        | developer_users.code_editor_url
+        |
+        | Optional fallback column:
+        | developer_users.vscode_url
+        |--------------------------------------------------------------------------
+        */
+
+        if (Schema::hasColumn($table, 'code_editor_url')) {
+            $url = trim((string) ($developer->code_editor_url ?? ''));
+
+            if ($url) {
+                return $this->normalizeUrl($url);
+            }
+        }
+
+        if (Schema::hasColumn($table, 'vscode_url')) {
+            $url = trim((string) ($developer->vscode_url ?? ''));
+
+            if ($url) {
+                return $this->normalizeUrl($url);
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Final fallback only.
+        |--------------------------------------------------------------------------
+        */
+
+        $fallback = config('services.vscode.url') ?: env('VSCODE_WEB_URL');
+
+        if ($fallback) {
+            return $this->normalizeUrl($fallback);
+        }
+
+        return null;
+    }
+
+    private function normalizeUrl(string $url): string
+    {
+        $url = trim($url);
+
+        if (!$url) {
+            return $url;
+        }
+
+        if (!Str::startsWith($url, ['http://', 'https://'])) {
+            $url = 'https://' . $url;
+        }
+
+        return rtrim($url, '/');
     }
 
     private function projectRoot($developer): string
