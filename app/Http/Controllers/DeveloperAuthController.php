@@ -6,6 +6,7 @@ use App\Models\DeveloperUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class DeveloperAuthController extends Controller
 {
@@ -28,13 +29,33 @@ class DeveloperAuthController extends Controller
         $login = trim($data['login']);
         $password = $data['password'];
 
-        $developer = DeveloperUser::where(function ($query) use ($login) {
-                $query->where('email', $login)
-                    ->orWhere('contact_email', $login)
-                    ->orWhere('cpanel_username', $login)
-                    ->orWhere('username', $login);
-            })
-            ->first();
+        $developerTable = (new DeveloperUser())->getTable();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Find developer safely
+        |--------------------------------------------------------------------------
+        | Your table does not have username column, so we only use columns
+        | that actually exist in developer_users table.
+        |--------------------------------------------------------------------------
+        */
+        $developer = DeveloperUser::where(function ($query) use ($login, $developerTable) {
+            if (Schema::hasColumn($developerTable, 'email')) {
+                $query->orWhere('email', $login);
+            }
+
+            if (Schema::hasColumn($developerTable, 'contact_email')) {
+                $query->orWhere('contact_email', $login);
+            }
+
+            if (Schema::hasColumn($developerTable, 'cpanel_username')) {
+                $query->orWhere('cpanel_username', $login);
+            }
+
+            if (Schema::hasColumn($developerTable, 'username')) {
+                $query->orWhere('username', $login);
+            }
+        })->first();
 
         if (!$developer) {
             return back()
@@ -42,10 +63,10 @@ class DeveloperAuthController extends Controller
                 ->with('error', 'Developer account not found.');
         }
 
-        if (!$developer->is_active) {
+        if (!$this->developerPortalIsActive($developer)) {
             return back()
                 ->withInput($request->only('login'))
-                ->with('error', 'Developer account is disabled.');
+                ->with('error', 'Developer portal access is disabled.');
         }
 
         $storedPassword = $developer->password;
@@ -53,9 +74,8 @@ class DeveloperAuthController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Check hashed password
+        | Check hashed Laravel password
         |--------------------------------------------------------------------------
-        | Normal Laravel password should be saved using Hash::make().
         */
         if (!empty($storedPassword)) {
             try {
@@ -69,10 +89,11 @@ class DeveloperAuthController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Temporary legacy plain password support
+        | Temporary plain password support
         |--------------------------------------------------------------------------
-        | If old records have plain password, allow login once and convert to hash.
-        | After this, password will be stored safely as hashed password.
+        | If any old developer password was saved as plain text,
+        | login will work once and then convert to hashed password.
+        |--------------------------------------------------------------------------
         */
         if (!$passwordMatched && !empty($storedPassword) && hash_equals($storedPassword, $password)) {
             $passwordMatched = true;
@@ -89,9 +110,11 @@ class DeveloperAuthController extends Controller
 
         Auth::guard('developer')->login($developer, $request->boolean('remember'));
 
-        $developer->update([
-            'last_login_at' => now(),
-        ]);
+        if (Schema::hasColumn($developerTable, 'last_login_at')) {
+            $developer->update([
+                'last_login_at' => now(),
+            ]);
+        }
 
         $request->session()->regenerate();
 
@@ -107,5 +130,28 @@ class DeveloperAuthController extends Controller
 
         return redirect()->route('developer.login')
             ->with('success', 'Developer logged out successfully.');
+    }
+
+    private function developerPortalIsActive(DeveloperUser $developer): bool
+    {
+        $developerTable = $developer->getTable();
+
+        if (Schema::hasColumn($developerTable, 'developer_portal_access')) {
+            return (bool) $developer->developer_portal_access;
+        }
+
+        if (Schema::hasColumn($developerTable, 'portal_access_enabled')) {
+            return (bool) $developer->portal_access_enabled;
+        }
+
+        if (Schema::hasColumn($developerTable, 'developer_portal_enabled')) {
+            return (bool) $developer->developer_portal_enabled;
+        }
+
+        if (Schema::hasColumn($developerTable, 'is_active')) {
+            return (bool) $developer->is_active;
+        }
+
+        return true;
     }
 }
