@@ -140,6 +140,7 @@
         display: inline-flex;
         align-items: center;
         padding: 3px;
+        flex-shrink: 0;
     }
 
     .portal-switch::after {
@@ -175,6 +176,52 @@
     .soft-scrollbar::-webkit-scrollbar-thumb {
         background: #cbd5e1;
         border-radius: 999px;
+    }
+
+    .dev-card-input {
+        width: 100%;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 10px 12px;
+        outline: none;
+        font-size: 13px;
+        font-weight: 700;
+        background: #fff;
+    }
+
+    .dev-card-input:focus {
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, .15);
+    }
+
+    .dev-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 12px;
+        font-weight: 900;
+        color: #334155;
+        line-height: 1.1;
+        min-height: 44px;
+    }
+
+    .dev-check input {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+    }
+
+    .dev-section-title {
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 10px;
     }
 </style>
 
@@ -273,8 +320,8 @@ Password: {{ $login['password'] ?? '-' }}
                 </div>
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
-                    Fetch cPanel accounts, choose project frameworks, set each account’s Code Editor URL, assign permissions,
-                    and turn Developer Portal access ON or OFF.
+                    Fetch cPanel accounts, choose frameworks, set each account’s backend Code Editor URL,
+                    assign permissions, and control Developer Portal access.
                 </p>
 
                 <div class="mt-5 flex flex-wrap gap-2">
@@ -283,7 +330,7 @@ Password: {{ $login['password'] ?? '-' }}
                     </span>
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
-                        Public Editor Route: {{ $publicCodeEditorUrl }}
+                        Public Editor: {{ $publicCodeEditorUrl }}
                     </span>
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
@@ -292,14 +339,6 @@ Password: {{ $login['password'] ?? '-' }}
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
                         Developer Users: {{ $developerCount }}
-                    </span>
-
-                    <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/30 text-xs font-bold">
-                        Active: {{ $activeDeveloperCount }}
-                    </span>
-
-                    <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400/30 text-xs font-bold">
-                        Disabled: {{ $disabledDeveloperCount }}
                     </span>
                 </div>
             </div>
@@ -438,7 +477,7 @@ Password: {{ $login['password'] ?? '-' }}
                     <div>
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
-                            Tick accounts, choose framework, add per-account Code Editor URL, permissions, and set Developer Portal access ON/OFF.
+                            Card layout prevents the previous table overlap issue. Select accounts and configure developer access.
                         </p>
                     </div>
 
@@ -446,17 +485,17 @@ Password: {{ $login['password'] ?? '-' }}
                         <input type="text"
                                id="accountSearch"
                                oninput="accountPagination.apply()"
-                               placeholder="Search domain, username, email..."
-                               class="w-full md:w-80 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                               placeholder="Search domain, username, email, editor URL..."
+                               class="w-full md:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
 
                         <select id="accountPageSize"
                                 onchange="accountPagination.changePageSize()"
                                 class="w-full md:w-40 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="10">10 / page</option>
-                            <option value="20" selected>20 / page</option>
+                            <option value="5">5 / page</option>
+                            <option value="10" selected>10 / page</option>
+                            <option value="20">20 / page</option>
                             <option value="30">30 / page</option>
                             <option value="50">50 / page</option>
-                            <option value="100">100 / page</option>
                         </select>
 
                         <button type="button"
@@ -507,193 +546,181 @@ Password: {{ $login['password'] ?? '-' }}
                     </div>
                 </div>
 
-                <div class="overflow-x-auto soft-scrollbar">
-                    <table class="w-full min-w-[2300px] text-sm">
-                        <thead class="bg-slate-100">
-                            <tr>
-                                <th class="p-4 text-left w-16">Select</th>
-                                <th class="p-4 text-left">Account</th>
-                                <th class="p-4 text-left">Server</th>
-                                <th class="p-4 text-left">Framework</th>
-                                <th class="p-4 text-left">Project Root</th>
-                                <th class="p-4 text-left">Code Editor URL</th>
-                                <th class="p-4 text-left">Developer Portal</th>
-                                <th class="p-4 text-left">Commands</th>
-                                <th class="p-4 text-left">Permissions</th>
-                                <th class="p-4 text-left">Database</th>
-                                <th class="p-4 text-left">Status</th>
-                            </tr>
-                        </thead>
+                <div id="accountCardList" class="p-5 space-y-5">
+                    @foreach($cpanelAccounts as $index => $account)
+                        @php
+                            $username = $account['user'] ?? 'user_' . $index;
+                            $domain = $account['domain'] ?? '-';
+                            $email = $account['email'] ?? '';
+                            $framework = $account['framework'] ?? 'custom';
+                            $existingDeveloper = $developers[$username] ?? null;
+                            $alreadyExists = !empty($existingDeveloper);
+                            $portalActive = $existingDeveloper ? $portalIsActive($existingDeveloper) : true;
 
-                        <tbody id="accountTableBody" class="divide-y divide-slate-100">
-                            @foreach($cpanelAccounts as $index => $account)
-                                @php
-                                    $username = $account['user'] ?? 'user_' . $index;
-                                    $domain = $account['domain'] ?? '-';
-                                    $email = $account['email'] ?? '';
-                                    $framework = $account['framework'] ?? 'custom';
-                                    $existingDeveloper = $developers[$username] ?? null;
-                                    $alreadyExists = !empty($existingDeveloper);
-                                    $portalActive = $existingDeveloper ? $portalIsActive($existingDeveloper) : true;
+                            $currentEditorUrl = $existingDeveloper
+                                ? ($existingDeveloper->code_editor_url ?? $existingDeveloper->vscode_url ?? null)
+                                : null;
 
-                                    $currentEditorUrl = $existingDeveloper
-                                        ? ($existingDeveloper->code_editor_url ?? $existingDeveloper->vscode_url ?? null)
-                                        : null;
+                            $editorUrl = $currentEditorUrl ?: $editorUrlForUser($username, $domain, $account);
 
-                                    $editorUrl = $currentEditorUrl ?: $editorUrlForUser($username, $domain, $account);
+                            $searchText = strtolower(
+                                ($domain ?? '') . ' ' .
+                                ($username ?? '') . ' ' .
+                                ($email ?? '') . ' ' .
+                                ($account['ip'] ?? '') . ' ' .
+                                ($account['plan'] ?? '') . ' ' .
+                                $framework . ' ' .
+                                $editorUrl
+                            );
+                        @endphp
 
-                                    $searchText = strtolower(
-                                        ($domain ?? '') . ' ' .
-                                        ($username ?? '') . ' ' .
-                                        ($email ?? '') . ' ' .
-                                        ($account['ip'] ?? '') . ' ' .
-                                        ($account['plan'] ?? '') . ' ' .
-                                        $framework . ' ' .
-                                        $editorUrl
-                                    );
-                                @endphp
+                        <div class="cpanel-account-row rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                             data-search="{{ $searchText }}"
+                             data-visible="1">
 
-                                <tr class="cpanel-account-row hover:bg-slate-50 transition"
-                                    data-search="{{ $searchText }}"
-                                    data-visible="1">
-                                    <td class="p-4 align-top">
-                                        <label class="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-slate-100 hover:bg-blue-100 cursor-pointer border border-slate-200">
-                                            <input type="checkbox"
-                                                   name="selected[]"
-                                                   value="{{ $username }}"
-                                                   class="account-select rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                   onchange="updateSelectedAccountCount()">
-                                        </label>
+                            <div class="p-5 bg-slate-50 border-b flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                                <div class="flex items-start gap-4">
+                                    <label class="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-white border border-slate-200 hover:bg-blue-50 cursor-pointer shrink-0">
+                                        <input type="checkbox"
+                                               name="selected[]"
+                                               value="{{ $username }}"
+                                               class="account-select rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                               onchange="updateSelectedAccountCount()">
+                                    </label>
 
-                                        <input type="hidden" name="accounts[{{ $username }}][user]" value="{{ $username }}">
-                                        <input type="hidden" name="accounts[{{ $username }}][name]" value="{{ $account['name'] ?? $username }}">
-                                        <input type="hidden" name="accounts[{{ $username }}][email]" value="{{ $email }}">
-                                        <input type="hidden" name="accounts[{{ $username }}][domain]" value="{{ $domain }}">
-                                        <input type="hidden" name="accounts[{{ $username }}][server_id]" value="{{ $account['server_id'] ?? $loadedServerId }}">
-                                    </td>
+                                    <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-globe"></i>
+                                    </div>
 
-                                    <td class="p-4 align-top">
-                                        <div class="flex items-start gap-3">
-                                            <div class="w-11 h-11 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                                                <i class="fa-solid fa-globe"></i>
-                                            </div>
+                                    <div>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <h3 class="text-xl font-black text-slate-900">{{ $domain }}</h3>
 
-                                            <div>
-                                                <div class="font-black text-slate-900">{{ $domain }}</div>
+                                            @if($alreadyExists)
+                                                <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-black">
+                                                    Existing Developer
+                                                </span>
+                                            @else
+                                                <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-black">
+                                                    Ready
+                                                </span>
+                                            @endif
 
-                                                <div class="text-xs text-slate-500 mt-1">
-                                                    <span class="font-black">User:</span> {{ $username }}
-                                                </div>
+                                            @if(!empty($account['suspended']))
+                                                <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black">
+                                                    Suspended
+                                                </span>
+                                            @endif
+                                        </div>
 
-                                                <div class="text-xs text-slate-500 mt-1">
-                                                    <span class="font-black">Email:</span> {{ $email ?: '-' }}
-                                                </div>
+                                        <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 font-bold">
+                                            <span>User: <b class="text-slate-800">{{ $username }}</b></span>
+                                            <span>Email: <b class="text-slate-800">{{ $email ?: '-' }}</b></span>
+                                            <span>IP: <b class="text-slate-800">{{ $account['ip'] ?? '-' }}</b></span>
+                                            <span>Plan: <b class="text-purple-700">{{ $account['plan'] ?? 'default' }}</b></span>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                                <div class="text-xs text-slate-500 mt-1">
-                                                    <span class="font-black">IP:</span> {{ $account['ip'] ?? '-' }}
-                                                </div>
+                                <div class="flex items-center gap-3">
+                                    <input type="hidden" name="accounts[{{ $username }}][developer_portal_access]" value="0">
+
+                                    <label class="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox"
+                                               class="portal-switch-input account-portal-toggle"
+                                               name="accounts[{{ $username }}][developer_portal_access]"
+                                               value="1"
+                                               {{ $portalActive ? 'checked' : '' }}
+                                               onchange="updateInlinePortalLabel(this)">
+                                        <span class="portal-switch"></span>
+                                    </label>
+
+                                    <span class="portal-inline-label px-3 py-1 rounded-full text-xs font-black {{ $portalActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                        {{ $portalActive ? 'ON' : 'OFF' }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="p-5">
+                                <input type="hidden" name="accounts[{{ $username }}][user]" value="{{ $username }}">
+                                <input type="hidden" name="accounts[{{ $username }}][name]" value="{{ $account['name'] ?? $username }}">
+                                <input type="hidden" name="accounts[{{ $username }}][email]" value="{{ $email }}">
+                                <input type="hidden" name="accounts[{{ $username }}][domain]" value="{{ $domain }}">
+                                <input type="hidden" name="accounts[{{ $username }}][server_id]" value="{{ $account['server_id'] ?? $loadedServerId }}">
+
+                                <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+
+                                    {{-- Main Config --}}
+                                    <div class="xl:col-span-4 space-y-4">
+                                        <div>
+                                            <div class="dev-section-title">Framework</div>
+                                            <select name="accounts[{{ $username }}][framework]" class="dev-card-input">
+                                                @foreach($frameworks as $key => $label)
+                                                    <option value="{{ $key }}" {{ $framework === $key ? 'selected' : '' }}>
+                                                        {{ $label }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+
+                                            <input type="hidden" name="accounts[{{ $username }}][project_type]" value="{{ $account['project_type'] ?? 'custom' }}">
+                                        </div>
+
+                                        <div>
+                                            <div class="dev-section-title">Project Root</div>
+                                            <input type="text"
+                                                   name="accounts[{{ $username }}][project_root]"
+                                                   value="{{ $account['project_root'] ?? '/home/' . $username . '/public_html' }}"
+                                                   class="dev-card-input">
+                                            <div class="text-xs text-slate-500 mt-2 font-bold">
+                                                Home: {{ $account['home'] ?? '/home/' . $username }}
                                             </div>
                                         </div>
-                                    </td>
 
-                                    <td class="p-4 align-top">
-                                        <div class="font-black text-slate-900">{{ $account['server_name'] ?? '-' }}</div>
-                                        <div class="text-xs text-slate-500 mt-1">{{ $account['server_host'] ?? '-' }}</div>
-                                        <div class="mt-2 inline-flex px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-black">
-                                            {{ $account['plan'] ?? 'default' }}
-                                        </div>
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        <select name="accounts[{{ $username }}][framework]"
-                                                class="w-48 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 font-bold">
-                                            @foreach($frameworks as $key => $label)
-                                                <option value="{{ $key }}" {{ $framework === $key ? 'selected' : '' }}>
-                                                    {{ $label }}
-                                                </option>
-                                            @endforeach
-                                        </select>
-
-                                        <input type="hidden" name="accounts[{{ $username }}][project_type]" value="{{ $account['project_type'] ?? 'custom' }}">
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        <input type="text"
-                                               name="accounts[{{ $username }}][project_root]"
-                                               value="{{ $account['project_root'] ?? '/home/' . $username . '/public_html' }}"
-                                               class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-xs">
-
-                                        <div class="text-xs text-slate-500 mt-2">
-                                            Home: {{ $account['home'] ?? '/home/' . $username }}
-                                        </div>
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        <div class="flex items-center gap-2">
-                                            <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                                                <i class="fa-solid fa-code"></i>
-                                            </div>
-
+                                        <div>
+                                            <div class="dev-section-title">Code Editor URL</div>
                                             <input type="text"
                                                    name="accounts[{{ $username }}][code_editor_url]"
                                                    value="{{ $editorUrl }}"
                                                    placeholder="https://code-{{ strtolower($username) }}.webscepts.com"
-                                                   class="w-96 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-xs">
+                                                   class="dev-card-input">
+                                            <div class="text-xs text-slate-500 mt-2 font-bold">
+                                                Developer opens {{ $publicCodeEditorUrl }}, backend loads this URL.
+                                            </div>
                                         </div>
+                                    </div>
 
-                                        <div class="text-xs text-slate-500 mt-2 max-w-[420px]">
-                                            Developer opens <span class="font-black">{{ $publicCodeEditorUrl }}</span>, but backend editor loads this URL.
+                                    {{-- Commands --}}
+                                    <div class="xl:col-span-3 space-y-4">
+                                        <div>
+                                            <div class="dev-section-title">Commands</div>
+
+                                            <div class="space-y-3">
+                                                <input type="text"
+                                                       name="accounts[{{ $username }}][build_command]"
+                                                       value="{{ $account['build_command'] ?? '' }}"
+                                                       placeholder="Build command"
+                                                       class="dev-card-input">
+
+                                                <input type="text"
+                                                       name="accounts[{{ $username }}][deploy_command]"
+                                                       value="{{ $account['deploy_command'] ?? '' }}"
+                                                       placeholder="Deploy command"
+                                                       class="dev-card-input">
+
+                                                <input type="text"
+                                                       name="accounts[{{ $username }}][start_command]"
+                                                       value="{{ $account['start_command'] ?? '' }}"
+                                                       placeholder="Start command"
+                                                       class="dev-card-input">
+                                            </div>
                                         </div>
-                                    </td>
+                                    </div>
 
-                                    <td class="p-4 align-top">
-                                        <div class="flex items-center gap-3">
-                                            <input type="hidden" name="accounts[{{ $username }}][developer_portal_access]" value="0">
+                                    {{-- Permissions --}}
+                                    <div class="xl:col-span-3">
+                                        <div class="dev-section-title">Permissions</div>
 
-                                            <label class="flex items-center gap-3 cursor-pointer">
-                                                <input type="checkbox"
-                                                       class="portal-switch-input account-portal-toggle"
-                                                       name="accounts[{{ $username }}][developer_portal_access]"
-                                                       value="1"
-                                                       {{ $portalActive ? 'checked' : '' }}
-                                                       onchange="updateInlinePortalLabel(this)">
-                                                <span class="portal-switch"></span>
-                                            </label>
-
-                                            <span class="portal-inline-label px-3 py-1 rounded-full text-xs font-black {{ $portalActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
-                                                {{ $portalActive ? 'ON' : 'OFF' }}
-                                            </span>
-                                        </div>
-
-                                        <div class="text-xs text-slate-500 mt-2 max-w-[220px]">
-                                            Controls whether the developer can login to Developer Portal after import.
-                                        </div>
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        <div class="grid grid-cols-1 gap-2">
-                                            <input type="text"
-                                                   name="accounts[{{ $username }}][build_command]"
-                                                   value="{{ $account['build_command'] ?? '' }}"
-                                                   placeholder="Build command"
-                                                   class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
-
-                                            <input type="text"
-                                                   name="accounts[{{ $username }}][deploy_command]"
-                                                   value="{{ $account['deploy_command'] ?? '' }}"
-                                                   placeholder="Deploy command"
-                                                   class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
-
-                                            <input type="text"
-                                                   name="accounts[{{ $username }}][start_command]"
-                                                   value="{{ $account['start_command'] ?? '' }}"
-                                                   placeholder="Start command"
-                                                   class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
-                                        </div>
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+                                        <div class="grid grid-cols-2 gap-2">
                                             @foreach([
                                                 'can_view_files' => 'View Files',
                                                 'can_edit_files' => 'Edit Files',
@@ -706,94 +733,74 @@ Password: {{ $login['password'] ?? '-' }}
                                                 'can_run_python' => 'Python',
                                                 'can_restart_app' => 'Restart',
                                             ] as $permission => $label)
-                                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+                                                <label class="dev-check">
                                                     <input type="checkbox"
                                                            name="accounts[{{ $username }}][{{ $permission }}]"
                                                            value="1"
                                                            class="rounded border-slate-300 text-blue-600"
                                                            {{ !empty($account[$permission]) ? 'checked' : '' }}>
-                                                    {{ $label }}
+                                                    <span>{{ $label }}</span>
                                                 </label>
                                             @endforeach
                                         </div>
-                                    </td>
+                                    </div>
 
-                                    <td class="p-4 align-top">
-                                        <div class="grid grid-cols-1 gap-2">
-                                            <select name="accounts[{{ $username }}][db_type]"
-                                                    class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold">
-                                                <option value="mysql" {{ ($account['db_type'] ?? 'mysql') === 'mysql' ? 'selected' : '' }}>MySQL</option>
-                                                <option value="postgresql" {{ ($account['db_type'] ?? '') === 'postgresql' ? 'selected' : '' }}>PostgreSQL</option>
-                                            </select>
+                                    {{-- Database --}}
+                                    <div class="xl:col-span-2 space-y-3">
+                                        <div class="dev-section-title">Database</div>
 
-                                            <input type="text"
-                                                   name="accounts[{{ $username }}][db_host]"
-                                                   value="{{ $account['db_host'] ?? 'localhost' }}"
-                                                   placeholder="DB Host"
-                                                   class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+                                        <select name="accounts[{{ $username }}][db_type]" class="dev-card-input">
+                                            <option value="mysql" {{ ($account['db_type'] ?? 'mysql') === 'mysql' ? 'selected' : '' }}>MySQL</option>
+                                            <option value="postgresql" {{ ($account['db_type'] ?? '') === 'postgresql' ? 'selected' : '' }}>PostgreSQL</option>
+                                        </select>
 
-                                            <input type="text"
-                                                   name="accounts[{{ $username }}][db_username]"
-                                                   value="{{ $account['db_username'] ?? $username }}"
-                                                   placeholder="DB Username"
-                                                   class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+                                        <input type="text"
+                                               name="accounts[{{ $username }}][db_host]"
+                                               value="{{ $account['db_host'] ?? 'localhost' }}"
+                                               placeholder="DB Host"
+                                               class="dev-card-input">
 
-                                            <input type="text"
-                                                   name="accounts[{{ $username }}][db_name]"
-                                                   value="{{ $account['db_name'] ?? '' }}"
-                                                   placeholder="DB Name"
-                                                   class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+                                        <input type="text"
+                                               name="accounts[{{ $username }}][db_username]"
+                                               value="{{ $account['db_username'] ?? $username }}"
+                                               placeholder="DB Username"
+                                               class="dev-card-input">
 
-                                            <div class="grid grid-cols-2 gap-2 text-xs font-bold">
-                                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
-                                                    <input type="checkbox"
-                                                           name="accounts[{{ $username }}][can_mysql]"
-                                                           value="1"
-                                                           class="rounded border-slate-300 text-blue-600"
-                                                           {{ !empty($account['can_mysql']) ? 'checked' : '' }}>
-                                                    MySQL
-                                                </label>
+                                        <input type="text"
+                                               name="accounts[{{ $username }}][db_name]"
+                                               value="{{ $account['db_name'] ?? '' }}"
+                                               placeholder="DB Name"
+                                               class="dev-card-input">
 
-                                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
-                                                    <input type="checkbox"
-                                                           name="accounts[{{ $username }}][can_postgresql]"
-                                                           value="1"
-                                                           class="rounded border-slate-300 text-blue-600"
-                                                           {{ !empty($account['can_postgresql']) ? 'checked' : '' }}>
-                                                    PGSQL
-                                                </label>
-                                            </div>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <label class="dev-check">
+                                                <input type="checkbox"
+                                                       name="accounts[{{ $username }}][can_mysql]"
+                                                       value="1"
+                                                       class="rounded border-slate-300 text-blue-600"
+                                                       {{ !empty($account['can_mysql']) ? 'checked' : '' }}>
+                                                MySQL
+                                            </label>
+
+                                            <label class="dev-check">
+                                                <input type="checkbox"
+                                                       name="accounts[{{ $username }}][can_postgresql]"
+                                                       value="1"
+                                                       class="rounded border-slate-300 text-blue-600"
+                                                       {{ !empty($account['can_postgresql']) ? 'checked' : '' }}>
+                                                PGSQL
+                                            </label>
                                         </div>
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        @if($alreadyExists)
-                                            <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-black">
-                                                Existing Developer
-                                            </span>
-                                        @else
-                                            <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-black">
-                                                Ready
-                                            </span>
-                                        @endif
-
-                                        @if(!empty($account['suspended']))
-                                            <div class="mt-2">
-                                                <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black">
-                                                    Suspended
-                                                </span>
-                                            </div>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
 
                 <div class="p-6 border-t bg-slate-50 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div class="text-sm text-slate-500 font-bold">
-                        Selected users will be created as Developer Codes accounts with their chosen framework, permissions, database access, portal status and per-account Code Editor URL.
+                        Selected users will be created/updated with framework, permissions, database access, portal status and per-account Code Editor URL.
                     </div>
 
                     <button class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
@@ -833,203 +840,172 @@ Password: {{ $login['password'] ?? '-' }}
                    class="w-full xl:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
-        <div class="overflow-x-auto soft-scrollbar">
-            <table class="w-full min-w-[1750px] text-sm">
-                <thead class="bg-slate-100">
-                    <tr>
-                        <th class="p-4 text-left">Developer</th>
-                        <th class="p-4 text-left">cPanel</th>
-                        <th class="p-4 text-left">Domain</th>
-                        <th class="p-4 text-left">Framework</th>
-                        <th class="p-4 text-left">Project Root</th>
-                        <th class="p-4 text-left">Code Editor</th>
-                        <th class="p-4 text-left">Permissions</th>
-                        <th class="p-4 text-left">Portal Access</th>
-                        <th class="p-4 text-right">Actions</th>
-                    </tr>
-                </thead>
+        <div class="p-5 grid grid-cols-1 xl:grid-cols-2 gap-5">
+            @forelse($developers as $developer)
+                @php
+                    $developerPortalEnabled = $portalIsActive($developer);
 
-                <tbody class="divide-y divide-slate-100">
-                    @forelse($developers as $developer)
-                        @php
-                            $developerPortalEnabled = $portalIsActive($developer);
+                    $developerEditorUrl = $developer->code_editor_url
+                        ?? $developer->vscode_url
+                        ?? null;
 
-                            $developerEditorUrl = $developer->code_editor_url
-                                ?? $developer->vscode_url
-                                ?? null;
+                    $fallbackDeveloperEditorUrl = $developerEditorUrl
+                        ?: $editorUrlForUser($developer->cpanel_username ?? '', $developer->cpanel_domain ?? '', []);
 
-                            $developerSearchText = strtolower(
-                                ($developer->name ?? '') . ' ' .
-                                ($developer->email ?? '') . ' ' .
-                                ($developer->cpanel_username ?? '') . ' ' .
-                                ($developer->cpanel_domain ?? '') . ' ' .
-                                ($developer->framework ?? '') . ' ' .
-                                ($developerEditorUrl ?? '')
-                            );
+                    $developerSearchText = strtolower(
+                        ($developer->name ?? '') . ' ' .
+                        ($developer->email ?? '') . ' ' .
+                        ($developer->cpanel_username ?? '') . ' ' .
+                        ($developer->cpanel_domain ?? '') . ' ' .
+                        ($developer->framework ?? '') . ' ' .
+                        ($fallbackDeveloperEditorUrl ?? '')
+                    );
 
-                            $toggleRoute = Route::has('developers.toggle') ? route('developers.toggle', $developer->id) : '#';
-                            $resetRoute = Route::has('developers.reset-password') ? route('developers.reset-password', $developer->id) : '#';
-                            $deleteRoute = Route::has('developers.destroy') ? route('developers.destroy', $developer->id) : '#';
-                        @endphp
+                    $toggleRoute = Route::has('developers.toggle') ? route('developers.toggle', $developer->id) : '#';
+                    $resetRoute = Route::has('developers.reset-password') ? route('developers.reset-password', $developer->id) : '#';
+                    $deleteRoute = Route::has('developers.destroy') ? route('developers.destroy', $developer->id) : '#';
+                @endphp
 
-                        <tr class="developer-row hover:bg-slate-50 transition" data-search="{{ $developerSearchText }}">
-                            <td class="p-4 align-top">
-                                <div class="flex items-start gap-3">
-                                    <div class="w-11 h-11 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
-                                        <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
-                                    </div>
+                <div class="developer-row rounded-3xl border border-slate-200 bg-white shadow-sm p-5"
+                     data-search="{{ $developerSearchText }}">
+                    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                        <div class="flex items-start gap-3">
+                            <div class="w-12 h-12 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
+                                <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
+                            </div>
 
-                                    <div>
-                                        <div class="font-black text-slate-900">{{ $developer->name ?? '-' }}</div>
-                                        <div class="text-xs text-slate-500 mt-1">{{ $developer->email ?? '-' }}</div>
-                                        <div class="text-xs text-slate-500 mt-1">
-                                            Last login:
-                                            {{ !empty($developer->last_login_at) ? \Carbon\Carbon::parse($developer->last_login_at)->diffForHumans() : 'Never' }}
-                                        </div>
-                                    </div>
+                            <div>
+                                <div class="font-black text-slate-900 text-lg">{{ $developer->name ?? '-' }}</div>
+                                <div class="text-xs text-slate-500 mt-1 font-bold">{{ $developer->email ?? '-' }}</div>
+                                <div class="text-xs text-slate-500 mt-1 font-bold">
+                                    cPanel: {{ $developer->cpanel_username ?? '-' }}
                                 </div>
-                            </td>
+                                <div class="text-xs text-slate-500 mt-1 font-bold">
+                                    Domain: {{ $developer->cpanel_domain ?? '-' }}
+                                </div>
+                            </div>
+                        </div>
 
-                            <td class="p-4 align-top">
-                                <div class="font-black text-slate-900">{{ $developer->cpanel_username ?? '-' }}</div>
-                                <div class="text-xs text-slate-500 mt-1">{{ $developer->ssh_username ?? '-' }}</div>
-                            </td>
+                        <span class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
+                            <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
+                            {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
+                        </span>
+                    </div>
 
-                            <td class="p-4 align-top">
-                                <div class="font-black text-slate-900">{{ $developer->cpanel_domain ?? '-' }}</div>
-                                <div class="text-xs text-slate-500 mt-1">{{ $developer->contact_email ?? '-' }}</div>
-                            </td>
+                    <div class="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                            <div class="dev-section-title">Project Root</div>
+                            <div class="text-xs font-bold text-slate-700 break-all">
+                                {{ $developer->project_root ?? $developer->allowed_project_path ?? '-' }}
+                            </div>
+                        </div>
 
-                            <td class="p-4 align-top">
-                                <span class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
-                                    <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
-                                    {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
+                        <div class="rounded-2xl bg-blue-50 border border-blue-200 p-4">
+                            <div class="dev-section-title">Code Editor</div>
+
+                            <a href="{{ $publicCodeEditorUrl }}"
+                               target="_blank"
+                               class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
+                                <i class="fa-solid fa-code"></i>
+                                Open Public Editor
+                            </a>
+
+                            <div class="text-xs text-blue-700 mt-3 font-bold break-all">
+                                Backend: {{ $fallbackDeveloperEditorUrl ?: 'Not configured' }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-5 flex flex-wrap gap-2 text-xs font-black">
+                        @foreach([
+                            'can_view_files' => 'Files',
+                            'can_edit_files' => 'Edit',
+                            'can_git_pull' => 'Git',
+                            'can_clear_cache' => 'Cache',
+                            'can_composer' => 'Composer',
+                            'can_npm' => 'NPM',
+                            'can_run_build' => 'Build',
+                            'can_run_python' => 'Python',
+                            'can_mysql' => 'MySQL',
+                            'can_postgresql' => 'PGSQL',
+                        ] as $permission => $label)
+                            @if(!empty($developer->{$permission}))
+                                <span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                    {{ $label }}
                                 </span>
-                            </td>
+                            @endif
+                        @endforeach
+                    </div>
 
-                            <td class="p-4 align-top">
-                                <div class="text-xs font-bold text-slate-700 max-w-[300px] break-all">
-                                    {{ $developer->project_root ?? $developer->allowed_project_path ?? '-' }}
-                                </div>
-                            </td>
+                    <div class="mt-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                        <div>
+                            @if(Route::has('developers.toggle'))
+                                <form method="POST"
+                                      action="{{ $toggleRoute }}"
+                                      class="developer-toggle-form"
+                                      data-enabled="{{ $developerPortalEnabled ? '1' : '0' }}">
+                                    @csrf
 
-                            <td class="p-4 align-top">
-                                <div class="flex flex-col gap-2">
-                                    <a href="{{ $publicCodeEditorUrl }}"
-                                       target="_blank"
-                                       class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
-                                        <i class="fa-solid fa-code"></i>
-                                        Open Public Editor
-                                    </a>
+                                    <button type="submit"
+                                            class="group flex items-center gap-3 px-4 py-3 rounded-2xl border transition {{ $developerPortalEnabled ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100' }}"
+                                            title="{{ $developerPortalEnabled ? 'Turn Off Portal Access' : 'Turn On Portal Access' }}">
+                                        <span class="relative inline-flex h-8 w-14 rounded-full transition {{ $developerPortalEnabled ? 'bg-green-600' : 'bg-slate-300' }}">
+                                            <span class="absolute top-1 h-6 w-6 rounded-full bg-white shadow transition {{ $developerPortalEnabled ? 'left-7' : 'left-1' }}"></span>
+                                        </span>
 
-                                    <div class="text-xs text-slate-500 max-w-[320px] break-all">
-                                        Backend: {{ $developerEditorUrl ?: 'Not set' }}
-                                    </div>
-                                </div>
-                            </td>
-
-                            <td class="p-4 align-top">
-                                <div class="flex flex-wrap gap-2 text-xs font-black">
-                                    @foreach([
-                                        'can_view_files' => 'Files',
-                                        'can_edit_files' => 'Edit',
-                                        'can_git_pull' => 'Git',
-                                        'can_clear_cache' => 'Cache',
-                                        'can_composer' => 'Composer',
-                                        'can_npm' => 'NPM',
-                                        'can_run_build' => 'Build',
-                                        'can_run_python' => 'Python',
-                                        'can_mysql' => 'MySQL',
-                                        'can_postgresql' => 'PGSQL',
-                                    ] as $permission => $label)
-                                        @if(!empty($developer->{$permission}))
-                                            <span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-700">
-                                                {{ $label }}
-                                            </span>
-                                        @endif
-                                    @endforeach
-                                </div>
-                            </td>
-
-                            <td class="p-4 align-top">
-                                <div class="flex items-center gap-3">
-                                    @if(Route::has('developers.toggle'))
-                                        <form method="POST"
-                                              action="{{ $toggleRoute }}"
-                                              class="developer-toggle-form"
-                                              data-enabled="{{ $developerPortalEnabled ? '1' : '0' }}">
-                                            @csrf
-
-                                            <button type="submit"
-                                                    class="group flex items-center gap-3 px-4 py-3 rounded-2xl border transition {{ $developerPortalEnabled ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100' }}"
-                                                    title="{{ $developerPortalEnabled ? 'Turn Off Portal Access' : 'Turn On Portal Access' }}">
-                                                <span class="relative inline-flex h-8 w-14 rounded-full transition {{ $developerPortalEnabled ? 'bg-green-600' : 'bg-slate-300' }}">
-                                                    <span class="absolute top-1 h-6 w-6 rounded-full bg-white shadow transition {{ $developerPortalEnabled ? 'left-7' : 'left-1' }}"></span>
-                                                </span>
-
-                                                <span class="font-black text-xs">
-                                                    {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
-                                                </span>
-                                            </button>
-                                        </form>
-                                    @else
-                                        <span class="px-4 py-2 rounded-2xl text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                        <span class="font-black text-xs">
                                             {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
                                         </span>
-                                    @endif
-                                </div>
+                                    </button>
+                                </form>
+                            @else
+                                <span class="px-4 py-2 rounded-2xl text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                    {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                                </span>
+                            @endif
+                        </div>
 
-                                <div class="mt-2 text-xs font-bold {{ $developerPortalEnabled ? 'text-green-600' : 'text-red-600' }}">
-                                    {{ $developerPortalEnabled ? 'Developer can login' : 'Developer login blocked' }}
-                                </div>
-                            </td>
+                        <div class="flex justify-end gap-2">
+                            @if(Route::has('developers.reset-password'))
+                                <form method="POST" action="{{ $resetRoute }}">
+                                    @csrf
+                                    <button type="submit"
+                                            class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
+                                        <i class="fa-solid fa-key mr-1"></i>
+                                        Reset
+                                    </button>
+                                </form>
+                            @endif
 
-                            <td class="p-4 align-top text-right">
-                                <div class="flex justify-end gap-2">
-                                    @if(Route::has('developers.reset-password'))
-                                        <form method="POST" action="{{ $resetRoute }}">
-                                            @csrf
-                                            <button type="submit"
-                                                    class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
-                                                <i class="fa-solid fa-key mr-1"></i>
-                                                Reset
-                                            </button>
-                                        </form>
-                                    @endif
+                            @if(Route::has('developers.destroy'))
+                                <form method="POST"
+                                      action="{{ $deleteRoute }}"
+                                      onsubmit="return confirm('Delete this developer login?')">
+                                    @csrf
+                                    @method('DELETE')
 
-                                    @if(Route::has('developers.destroy'))
-                                        <form method="POST"
-                                              action="{{ $deleteRoute }}"
-                                              onsubmit="return confirm('Delete this developer login?')">
-                                            @csrf
-                                            @method('DELETE')
+                                    <button type="submit"
+                                            class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs">
+                                        <i class="fa-solid fa-trash mr-1"></i>
+                                        Delete
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @empty
+                <div class="xl:col-span-2 p-10 text-center">
+                    <div class="w-20 h-20 mx-auto rounded-3xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <i class="fa-solid fa-user-shield text-3xl"></i>
+                    </div>
 
-                                            <button type="submit"
-                                                    class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs">
-                                                <i class="fa-solid fa-trash mr-1"></i>
-                                                Delete
-                                            </button>
-                                        </form>
-                                    @endif
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="9" class="p-10 text-center">
-                                <div class="w-20 h-20 mx-auto rounded-3xl bg-slate-100 text-slate-600 flex items-center justify-center">
-                                    <i class="fa-solid fa-user-shield text-3xl"></i>
-                                </div>
-
-                                <h3 class="text-xl font-black text-slate-900 mt-4">No developer users yet</h3>
-                                <p class="text-slate-500 mt-2">
-                                    Fetch cPanel accounts and create Developer Codes logins.
-                                </p>
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    <h3 class="text-xl font-black text-slate-900 mt-4">No developer users yet</h3>
+                    <p class="text-slate-500 mt-2">
+                        Fetch cPanel accounts and create Developer Codes logins.
+                    </p>
+                </div>
+            @endforelse
         </div>
     </div>
 
@@ -1058,8 +1034,8 @@ Password: {{ $login['password'] ?? '-' }}
     }
 
     function updateInlinePortalLabel(input) {
-        const row = input.closest('tr');
-        const label = row?.querySelector('.portal-inline-label');
+        const card = input.closest('.cpanel-account-row');
+        const label = card?.querySelector('.portal-inline-label');
 
         if (!label) {
             return;
@@ -1098,7 +1074,7 @@ Password: {{ $login['password'] ?? '-' }}
 
     const accountPagination = {
         page: 1,
-        pageSize: 20,
+        pageSize: 10,
 
         rows() {
             return Array.from(document.querySelectorAll('.cpanel-account-row'));
@@ -1190,7 +1166,7 @@ Password: {{ $login['password'] ?? '-' }}
 
         changePageSize() {
             const select = document.getElementById('accountPageSize');
-            this.pageSize = parseInt(select?.value || '20', 10);
+            this.pageSize = parseInt(select?.value || '10', 10);
             this.page = 1;
             this.apply();
         }
