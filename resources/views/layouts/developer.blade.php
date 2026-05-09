@@ -38,6 +38,10 @@
                 radial-gradient(circle at bottom left, rgba(220, 38, 38, .20), transparent 35%);
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         .developer-sidebar-scroll::-webkit-scrollbar {
             width: 6px;
         }
@@ -52,7 +56,7 @@
         }
 
         .dev-nav-active {
-            background: rgba(37, 99, 235, .18);
+            background: rgba(37, 99, 235, .22);
             color: #ffffff;
             border-color: rgba(96, 165, 250, .45);
         }
@@ -71,10 +75,6 @@
             border: 1px solid rgba(255, 255, 255, .12);
             backdrop-filter: blur(16px);
         }
-
-        html {
-            scroll-behavior: smooth;
-        }
     </style>
 
     @stack('styles')
@@ -83,6 +83,8 @@
 <body class="min-h-screen text-slate-900 antialiased">
 
 @php
+    use Illuminate\Support\Facades\Route;
+
     $developer = auth()->guard('developer')->user();
 
     $developerName = $developer->name
@@ -100,11 +102,30 @@
         ?? $developer->allowed_project_path
         ?? '/home/project/public_html';
 
-    $workspaceRoute = route('developer.domain.workspace');
+    $workspaceRoute = Route::has('developer.domain.workspace')
+        ? route('developer.domain.workspace')
+        : url('/workspace');
 
-    $codeEditorRoute = \Illuminate\Support\Facades\Route::has('developer.domain.codeditor')
+    $codeEditorRoute = Route::has('developer.domain.codeditor')
         ? route('developer.domain.codeditor')
         : url('/codeditor');
+
+    $logoutRoute = Route::has('developer.logout')
+        ? route('developer.logout')
+        : url('/logout');
+
+    $canGitPull = (bool) ($developer->can_git_pull ?? false);
+    $canClearCache = (bool) ($developer->can_clear_cache ?? false);
+    $canComposer = (bool) ($developer->can_composer ?? false);
+    $canNpm = (bool) ($developer->can_npm ?? false);
+    $canRunBuild = (bool) ($developer->can_run_build ?? false);
+    $canRunPython = (bool) ($developer->can_run_python ?? false);
+    $canRestartApp = (bool) ($developer->can_restart_app ?? false);
+    $canViewFiles = (bool) ($developer->can_view_files ?? false);
+    $canEditFiles = (bool) ($developer->can_edit_files ?? false);
+    $canDeleteFiles = (bool) ($developer->can_delete_files ?? false);
+    $canMysql = (bool) ($developer->can_mysql ?? false);
+    $canPostgresql = (bool) ($developer->can_postgresql ?? false);
 @endphp
 
 <div class="min-h-screen flex">
@@ -152,8 +173,9 @@
         </div>
 
         {{-- Menu --}}
-        <div class="flex-1 overflow-y-auto developer-sidebar-scroll p-5">
+        <div class="flex-1 overflow-y-auto developer-sidebar-scroll p-5 pb-28">
 
+            {{-- Workspace --}}
             <div class="mb-6">
                 <p class="px-3 mb-3 text-[11px] tracking-[0.3em] text-slate-500 font-black uppercase">
                     Workspace
@@ -195,6 +217,7 @@
                 </nav>
             </div>
 
+            {{-- Developer Tools --}}
             <div class="mb-6">
                 <p class="px-3 mb-3 text-[11px] tracking-[0.3em] text-slate-500 font-black uppercase">
                     Developer Tools
@@ -234,9 +257,144 @@
                         </span>
                         <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
                     </a>
+
+                    <a href="#env-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-yellow-500/20 text-yellow-300 flex items-center justify-center">
+                                <i class="fa-solid fa-file-code"></i>
+                            </span>
+                            ENV Manager
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
+
+                    <a href="#logs-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-red-500/20 text-red-300 flex items-center justify-center">
+                                <i class="fa-solid fa-file-lines"></i>
+                            </span>
+                            Error Logs
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
+
+                    <a href="#terminal-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-slate-500/20 text-slate-300 flex items-center justify-center">
+                                <i class="fa-solid fa-square-terminal"></i>
+                            </span>
+                            Safe Terminal
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
                 </nav>
             </div>
 
+            {{-- Framework Tools --}}
+            <div class="mb-6">
+                <p class="px-3 mb-3 text-[11px] tracking-[0.3em] text-slate-500 font-black uppercase">
+                    Framework Tools
+                </p>
+
+                <nav class="space-y-2">
+                    @if($canComposer || $canClearCache)
+                        <a href="#laravel-section"
+                           class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                            <span class="flex items-center gap-3 font-black">
+                                <span class="w-10 h-10 rounded-xl bg-red-500/20 text-red-300 flex items-center justify-center">
+                                    <i class="fa-brands fa-laravel"></i>
+                                </span>
+                                Laravel Tools
+                            </span>
+                            <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                        </a>
+                    @endif
+
+                    @if($canNpm || $canRunBuild)
+                        <a href="#frontend-section"
+                           class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                            <span class="flex items-center gap-3 font-black">
+                                <span class="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center">
+                                    <i class="fa-brands fa-react"></i>
+                                </span>
+                                Frontend Build
+                            </span>
+                            <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                        </a>
+                    @endif
+
+                    @if($canRunPython)
+                        <a href="#python-section"
+                           class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                            <span class="flex items-center gap-3 font-black">
+                                <span class="w-10 h-10 rounded-xl bg-yellow-500/20 text-yellow-300 flex items-center justify-center">
+                                    <i class="fa-brands fa-python"></i>
+                                </span>
+                                Python Tools
+                            </span>
+                            <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                        </a>
+                    @endif
+
+                    <a href="#deployment-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center">
+                                <i class="fa-solid fa-rocket"></i>
+                            </span>
+                            Deployment
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
+                </nav>
+            </div>
+
+            {{-- Quality & Debug --}}
+            <div class="mb-6">
+                <p class="px-3 mb-3 text-[11px] tracking-[0.3em] text-slate-500 font-black uppercase">
+                    Quality & Debug
+                </p>
+
+                <nav class="space-y-2">
+                    <a href="#health-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
+                                <i class="fa-solid fa-heart-pulse"></i>
+                            </span>
+                            Health Check
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
+
+                    <a href="#security-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-300 flex items-center justify-center">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </span>
+                            Security Notes
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
+
+                    <a href="#backup-section"
+                       class="dev-nav-link flex items-center justify-between px-4 py-3 rounded-2xl transition">
+                        <span class="flex items-center gap-3 font-black">
+                            <span class="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-300 flex items-center justify-center">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                            </span>
+                            Backup Status
+                        </span>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400"></i>
+                    </a>
+                </nav>
+            </div>
+
+            {{-- Settings --}}
             <div class="mb-6">
                 <p class="px-3 mb-3 text-[11px] tracking-[0.3em] text-slate-500 font-black uppercase">
                     Settings
@@ -267,6 +425,7 @@
                 </nav>
             </div>
 
+            {{-- Project Root --}}
             <div class="rounded-2xl glass-card p-4">
                 <p class="text-xs text-slate-400 font-bold">Project Root</p>
                 <p class="text-xs text-white font-black mt-2 break-all">{{ $projectRoot }}</p>
@@ -274,8 +433,8 @@
         </div>
 
         {{-- Logout --}}
-        <div class="p-5 border-t border-white/10">
-            <form method="POST" action="{{ route('developer.logout') }}">
+        <div class="p-5 border-t border-white/10 bg-slate-950">
+            <form method="POST" action="{{ $logoutRoute }}">
                 @csrf
 
                 <button type="submit"
@@ -307,7 +466,7 @@
                     <i class="fa-solid fa-code"></i>
                 </a>
 
-                <form method="POST" action="{{ route('developer.logout') }}">
+                <form method="POST" action="{{ $logoutRoute }}">
                     @csrf
                     <button class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center">
                         <i class="fa-solid fa-right-from-bracket"></i>
