@@ -22,9 +22,10 @@ use App\Http\Controllers\DeveloperCpanelImportController;
 |--------------------------------------------------------------------------
 | Developer Codes Subdomain
 |--------------------------------------------------------------------------
-| Public developer portal:
+| Developer portal:
 | https://developercodes.webscepts.com/login
 | https://developercodes.webscepts.com/workspace
+| https://developercodes.webscepts.com/codeditor
 |--------------------------------------------------------------------------
 */
 
@@ -40,6 +41,12 @@ Route::domain('developercodes.webscepts.com')
             return redirect()->route('developer.login');
         })->name('developer.home');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Developer Auth
+        |--------------------------------------------------------------------------
+        */
+
         Route::get('/login', [DeveloperAuthController::class, 'showLogin'])
             ->name('developer.login');
 
@@ -49,10 +56,102 @@ Route::domain('developercodes.webscepts.com')
         Route::post('/logout', [DeveloperAuthController::class, 'logout'])
             ->name('developer.logout');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Developer Protected Routes
+        |--------------------------------------------------------------------------
+        */
+
         Route::middleware(['developer.auth'])->group(function () {
+
+            /*
+            |--------------------------------------------------------------------------
+            | Main Workspace Pages
+            |--------------------------------------------------------------------------
+            */
 
             Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
                 ->name('developer.domain.workspace');
+
+            Route::get('/project-files', [DeveloperWorkspaceController::class, 'projectFiles'])
+                ->name('developer.domain.project.files');
+
+            Route::get('/commands', [DeveloperWorkspaceController::class, 'commands'])
+                ->name('developer.domain.commands');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Web VS Code / Code Editor Routes
+            |--------------------------------------------------------------------------
+            | Main route:
+            | https://developercodes.webscepts.com/codeditor
+            |
+            | Extra aliases are added to prevent 404 from typing mistakes.
+            |--------------------------------------------------------------------------
+            */
+
+            Route::get('/codeditor', [DeveloperWorkspaceController::class, 'codeEditor'])
+                ->name('developer.domain.codeditor');
+
+            Route::get('/codeeditor', [DeveloperWorkspaceController::class, 'codeEditor'])
+                ->name('developer.domain.codeeditor');
+
+            Route::get('/coddeditor', [DeveloperWorkspaceController::class, 'codeEditor'])
+                ->name('developer.domain.coddeditor');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Developer Tool Pages
+            |--------------------------------------------------------------------------
+            */
+
+            Route::get('/git-tools', [DeveloperWorkspaceController::class, 'gitTools'])
+                ->name('developer.domain.git.tools');
+
+            Route::get('/database', [DeveloperWorkspaceController::class, 'database'])
+                ->name('developer.domain.database');
+
+            Route::get('/env-manager', [DeveloperWorkspaceController::class, 'envManager'])
+                ->name('developer.domain.env.manager');
+
+            Route::get('/error-logs', [DeveloperWorkspaceController::class, 'errorLogs'])
+                ->name('developer.domain.error.logs');
+
+            Route::get('/safe-terminal', [DeveloperWorkspaceController::class, 'safeTerminal'])
+                ->name('developer.domain.safe.terminal');
+
+            Route::get('/laravel-tools', [DeveloperWorkspaceController::class, 'laravelTools'])
+                ->name('developer.domain.laravel.tools');
+
+            Route::get('/frontend-tools', [DeveloperWorkspaceController::class, 'frontendTools'])
+                ->name('developer.domain.frontend.tools');
+
+            Route::get('/python-tools', [DeveloperWorkspaceController::class, 'pythonTools'])
+                ->name('developer.domain.python.tools');
+
+            Route::get('/deployment', [DeveloperWorkspaceController::class, 'deployment'])
+                ->name('developer.domain.deployment');
+
+            Route::get('/health-check', [DeveloperWorkspaceController::class, 'healthCheck'])
+                ->name('developer.domain.health.check');
+
+            Route::get('/security-notes', [DeveloperWorkspaceController::class, 'securityNotes'])
+                ->name('developer.domain.security.notes');
+
+            Route::get('/backup-status', [DeveloperWorkspaceController::class, 'backupStatus'])
+                ->name('developer.domain.backup.status');
+
+            Route::get('/permissions', [DeveloperWorkspaceController::class, 'permissions'])
+                ->name('developer.domain.permissions');
+
+            Route::get('/account-settings', [DeveloperWorkspaceController::class, 'accountSettings'])
+                ->name('developer.domain.account.settings');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Safe Developer Actions
+            |--------------------------------------------------------------------------
+            */
 
             Route::post('/git-pull', [DeveloperWorkspaceController::class, 'gitPull'])
                 ->name('developer.domain.git.pull');
@@ -517,9 +616,6 @@ Route::middleware(['auth'])->group(function () {
     /*
     |--------------------------------------------------------------------------
     | Admin Developer Management Routes
-    |--------------------------------------------------------------------------
-    | Admin panel:
-    | https://systemmonitor.webscepts.com/developers/cpanel-import
     |--------------------------------------------------------------------------
     */
 
