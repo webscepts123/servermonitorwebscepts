@@ -200,66 +200,93 @@ class DeveloperWorkspaceController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function codeEditor()
+ 
+
+    private function developerCodeEditorUrl($developer): ?string
     {
-        $developer = $this->developer();
-
         if (!$developer) {
-            return redirect()->route('developer.login');
+            return null;
         }
 
-        if (!$this->can($developer, 'can_view_files')) {
-            return redirect()
-                ->route('developer.domain.workspace')
-                ->with('error', 'You do not have permission to access the code editor.');
+        $table = $developer->getTable();
+
+        /*
+        |--------------------------------------------------------------------------
+        | 1. Main saved per-account editor URL
+        |--------------------------------------------------------------------------
+        */
+
+        if (Schema::hasColumn($table, 'code_editor_url')) {
+            $url = trim((string) ($developer->code_editor_url ?? ''));
+
+            if ($url) {
+                return $this->normalizeUrl($url);
+            }
         }
 
-        $editorBackendUrl = $this->developerCodeEditorUrl($developer);
+        /*
+        |--------------------------------------------------------------------------
+        | 2. Optional old/fallback column
+        |--------------------------------------------------------------------------
+        */
 
-        if (!$editorBackendUrl) {
-            return redirect()
-                ->route('developer.domain.workspace')
-                ->with('error', 'Code editor URL is not configured for this developer account.');
+        if (Schema::hasColumn($table, 'vscode_url')) {
+            $url = trim((string) ($developer->vscode_url ?? ''));
+
+            if ($url) {
+                return $this->normalizeUrl($url);
+            }
         }
 
-        return view('developers.codeditor', [
-            'developer' => $developer,
-            'editorBackendUrl' => $editorBackendUrl,
-            'projectRoot' => $this->projectRoot($developer),
-        ]);
-    }
+        /*
+        |--------------------------------------------------------------------------
+        | 3. Auto-generate from cPanel username
+        |--------------------------------------------------------------------------
+        | Example:
+        | devteengirls => https://code-devteengirls.webscepts.com
+        |--------------------------------------------------------------------------
+        */
 
-    /*
-    |--------------------------------------------------------------------------
-    | Safe Developer Actions
-    |--------------------------------------------------------------------------
-    */
+        $username = trim((string) (
+            $developer->cpanel_username
+            ?? $developer->ssh_username
+            ?? ''
+        ));
 
-    public function gitPull(Request $request)
-    {
-        $developer = $this->developer();
-
-        if (!$developer) {
-            return redirect()->route('developer.login');
+        if ($username) {
+            return $this->normalizeUrl('https://code-' . strtolower($username) . '.webscepts.com');
         }
 
-        if (!$this->can($developer, 'can_git_pull')) {
-            return back()->with('error', 'Git Pull permission is disabled.');
+        /*
+        |--------------------------------------------------------------------------
+        | 4. Auto-generate from domain if username missing
+        |--------------------------------------------------------------------------
+        */
+
+        $domain = trim((string) ($developer->cpanel_domain ?? ''));
+
+        if ($domain) {
+            $domain = strtolower($domain);
+            $domain = preg_replace('#^https?://#', '', $domain);
+            $domain = preg_replace('#/.*$#', '', $domain);
+            $domain = str_replace([':', '_'], '-', $domain);
+
+            return $this->normalizeUrl('https://code-' . $domain);
         }
 
-        $projectRoot = $this->projectRoot($developer);
+        /*
+        |--------------------------------------------------------------------------
+        | 5. Final global fallback only
+        |--------------------------------------------------------------------------
+        */
 
-        if (!$this->validProjectPath($projectRoot)) {
-            return back()->with('error', 'Project path is invalid or not accessible.');
+        $fallback = config('services.vscode.url') ?: env('VSCODE_WEB_URL');
+
+        if ($fallback) {
+            return $this->normalizeUrl($fallback);
         }
 
-        if (!is_dir($projectRoot . '/.git')) {
-            return back()->with('error', 'This project folder is not a Git repository.');
-        }
-
-        $result = $this->runSafeCommand('git pull --ff-only', $projectRoot, 120);
-
-        return $this->commandResponse($result, 'Git pull completed successfully.');
+        return null;
     }
 
     public function clearCache(Request $request)
@@ -482,56 +509,34 @@ ENV;
         return false;
     }
 
-    private function developerCodeEditorUrl($developer): ?string
-    {
-        if (!$developer) {
-            return null;
-        }
+    public function codeEditor()
+{
+    $developer = $this->developer();
 
-        $table = $developer->getTable();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Per-account editor URL
-        |--------------------------------------------------------------------------
-        | Preferred column:
-        | developer_users.code_editor_url
-        |
-        | Optional fallback column:
-        | developer_users.vscode_url
-        |--------------------------------------------------------------------------
-        */
-
-        if (Schema::hasColumn($table, 'code_editor_url')) {
-            $url = trim((string) ($developer->code_editor_url ?? ''));
-
-            if ($url) {
-                return $this->normalizeUrl($url);
-            }
-        }
-
-        if (Schema::hasColumn($table, 'vscode_url')) {
-            $url = trim((string) ($developer->vscode_url ?? ''));
-
-            if ($url) {
-                return $this->normalizeUrl($url);
-            }
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Final fallback only.
-        |--------------------------------------------------------------------------
-        */
-
-        $fallback = config('services.vscode.url') ?: env('VSCODE_WEB_URL');
-
-        if ($fallback) {
-            return $this->normalizeUrl($fallback);
-        }
-
-        return null;
+    if (!$developer) {
+        return redirect()->route('developer.login');
     }
+
+    if (!$this->can($developer, 'can_view_files')) {
+        return redirect()
+            ->route('developer.domain.workspace')
+            ->with('error', 'You do not have permission to access the code editor.');
+    }
+
+    $editorBackendUrl = $this->developerCodeEditorUrl($developer);
+
+    if (!$editorBackendUrl) {
+        return redirect()
+            ->route('developer.domain.workspace')
+            ->with('error', 'Code editor URL is not configured for this developer account.');
+    }
+
+    return view('developers.codeditor', [
+        'developer' => $developer,
+        'editorBackendUrl' => $editorBackendUrl,
+        'projectRoot' => $this->projectRoot($developer),
+    ]);
+}
 
     private function normalizeUrl(string $url): string
     {
