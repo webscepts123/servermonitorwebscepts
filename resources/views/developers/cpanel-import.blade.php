@@ -36,6 +36,7 @@
     ];
 
     $loadedServerId = session('cpanel_accounts_server_id');
+
     $developerUrl = 'https://developercodes.webscepts.com/login';
     $publicCodeEditorUrl = 'https://developercodes.webscepts.com/codeditor';
 
@@ -119,6 +120,27 @@
             default => 'fa-solid fa-code',
         };
     };
+
+    $permissionGroups = [
+        'File Access' => [
+            'can_view_files' => ['View Files', 'fa-solid fa-eye'],
+            'can_edit_files' => ['Edit Files', 'fa-solid fa-pen-to-square'],
+            'can_delete_files' => ['Delete Files', 'fa-solid fa-trash'],
+        ],
+        'Commands' => [
+            'can_git_pull' => ['Git Pull', 'fa-solid fa-code-branch'],
+            'can_clear_cache' => ['Clear Cache', 'fa-solid fa-broom'],
+            'can_composer' => ['Composer', 'fa-solid fa-box'],
+            'can_npm' => ['NPM', 'fa-brands fa-node-js'],
+            'can_run_build' => ['Build', 'fa-solid fa-cube'],
+            'can_run_python' => ['Python', 'fa-brands fa-python'],
+            'can_restart_app' => ['Restart', 'fa-solid fa-rotate'],
+        ],
+        'Database' => [
+            'can_mysql' => ['MySQL', 'fa-solid fa-database'],
+            'can_postgresql' => ['PostgreSQL', 'fa-solid fa-server'],
+        ],
+    ];
 @endphp
 
 <style>
@@ -161,21 +183,6 @@
 
     .portal-switch-input:checked + .portal-switch::after {
         transform: translateX(26px);
-    }
-
-    .soft-scrollbar::-webkit-scrollbar {
-        height: 10px;
-        width: 10px;
-    }
-
-    .soft-scrollbar::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 999px;
-    }
-
-    .soft-scrollbar::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 999px;
     }
 
     .dev-card-input {
@@ -222,6 +229,29 @@
         text-transform: uppercase;
         color: #64748b;
         margin-bottom: 10px;
+    }
+
+    .permission-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 900;
+        border: 1px solid;
+    }
+
+    .permission-on {
+        background: #dcfce7;
+        color: #15803d;
+        border-color: #bbf7d0;
+    }
+
+    .permission-off {
+        background: #f8fafc;
+        color: #94a3b8;
+        border-color: #e2e8f0;
     }
 </style>
 
@@ -477,7 +507,7 @@ Password: {{ $login['password'] ?? '-' }}
                     <div>
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
-                            Card layout prevents the previous table overlap issue. Select accounts and configure developer access.
+                            Select accounts and configure framework, editor URL, portal access, commands, permissions and database.
                         </p>
                     </div>
 
@@ -868,6 +898,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div class="developer-row rounded-3xl border border-slate-200 bg-white shadow-sm p-5"
                      data-search="{{ $developerSearchText }}">
+
                     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                         <div class="flex items-start gap-3">
                             <div class="w-12 h-12 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
@@ -916,25 +947,68 @@ Password: {{ $login['password'] ?? '-' }}
                         </div>
                     </div>
 
-                    <div class="mt-5 flex flex-wrap gap-2 text-xs font-black">
-                        @foreach([
-                            'can_view_files' => 'Files',
-                            'can_edit_files' => 'Edit',
-                            'can_git_pull' => 'Git',
-                            'can_clear_cache' => 'Cache',
-                            'can_composer' => 'Composer',
-                            'can_npm' => 'NPM',
-                            'can_run_build' => 'Build',
-                            'can_run_python' => 'Python',
-                            'can_mysql' => 'MySQL',
-                            'can_postgresql' => 'PGSQL',
-                        ] as $permission => $label)
-                            @if(!empty($developer->{$permission}))
-                                <span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-700">
-                                    {{ $label }}
-                                </span>
-                            @endif
-                        @endforeach
+                    {{-- Full Permission View --}}
+                    <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                        <div class="dev-section-title">Permissions</div>
+
+                        <div class="space-y-4">
+                            @foreach($permissionGroups as $groupTitle => $permissions)
+                                <div>
+                                    <div class="text-xs font-black text-slate-500 mb-2">
+                                        {{ $groupTitle }}
+                                    </div>
+
+                                    <div class="flex flex-wrap gap-2">
+                                        @foreach($permissions as $column => $meta)
+                                            @php
+                                                $allowed = !empty($developer->{$column});
+                                                $label = $meta[0];
+                                                $icon = $meta[1];
+                                            @endphp
+
+                                            <span class="permission-pill {{ $allowed ? 'permission-on' : 'permission-off' }}">
+                                                <i class="{{ $icon }}"></i>
+                                                {{ $label }}
+                                                <span class="ml-1">
+                                                    {{ $allowed ? 'ON' : 'OFF' }}
+                                                </span>
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    {{-- Database Details --}}
+                    <div class="mt-5 grid grid-cols-1 lg:grid-cols-4 gap-3">
+                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                            <div class="text-xs font-black text-slate-500">DB Type</div>
+                            <div class="text-sm font-black text-slate-800 mt-1">
+                                {{ $developer->db_type ?? '-' }}
+                            </div>
+                        </div>
+
+                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                            <div class="text-xs font-black text-slate-500">DB Host</div>
+                            <div class="text-sm font-black text-slate-800 mt-1 break-all">
+                                {{ $developer->db_host ?? '-' }}
+                            </div>
+                        </div>
+
+                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                            <div class="text-xs font-black text-slate-500">DB User</div>
+                            <div class="text-sm font-black text-slate-800 mt-1 break-all">
+                                {{ $developer->db_username ?? '-' }}
+                            </div>
+                        </div>
+
+                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                            <div class="text-xs font-black text-slate-500">DB Name</div>
+                            <div class="text-sm font-black text-slate-800 mt-1 break-all">
+                                {{ $developer->db_name ?? '-' }}
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mt-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -954,13 +1028,13 @@ Password: {{ $login['password'] ?? '-' }}
                                         </span>
 
                                         <span class="font-black text-xs">
-                                            {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                                            Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
                                         </span>
                                     </button>
                                 </form>
                             @else
                                 <span class="px-4 py-2 rounded-2xl text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
-                                    {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                                    Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
                                 </span>
                             @endif
                         </div>
