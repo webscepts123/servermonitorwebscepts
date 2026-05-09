@@ -5,27 +5,31 @@
 @section('content')
 
 @php
+    use Illuminate\Support\Facades\Route;
+
     $servers = $servers ?? collect();
     $developers = $developers ?? collect();
     $cpanelAccounts = collect($cpanelAccounts ?? []);
+
     $frameworks = $frameworks ?? [
         'custom' => 'Custom / Other',
         'html' => 'Static HTML / CSS / JS',
         'php' => 'PHP',
         'wordpress' => 'WordPress',
         'laravel' => 'Laravel',
-        'react' => 'React',
+        'react' => 'React.js',
         'vue' => 'Vue.js',
         'angular' => 'Angular',
         'node' => 'Node.js / Express',
+        'nextjs' => 'Next.js',
+        'nuxt' => 'Nuxt.js',
+        'svelte' => 'Svelte',
         'python' => 'Python',
         'flask' => 'Flask',
         'django' => 'Django',
         'fastapi' => 'FastAPI',
-        'nextjs' => 'Next.js',
-        'nuxt' => 'Nuxt',
-        'svelte' => 'Svelte',
-        'java' => 'Java / Spring Boot',
+        'java' => 'Java',
+        'springboot' => 'Spring Boot',
         'dotnet' => '.NET',
         'ruby' => 'Ruby / Rails',
         'go' => 'Go',
@@ -34,10 +38,26 @@
     $loadedServerId = session('cpanel_accounts_server_id');
     $developerUrl = 'https://developercodes.webscepts.com/login';
 
+    $portalIsActive = function ($developer) {
+        return (bool) (
+            $developer->developer_portal_access
+            ?? $developer->portal_access_enabled
+            ?? $developer->developer_portal_enabled
+            ?? $developer->is_active
+            ?? false
+        );
+    };
+
     $developerCount = method_exists($developers, 'count') ? $developers->count() : 0;
+
     $activeDeveloperCount = method_exists($developers, 'filter')
-        ? $developers->filter(fn ($item) => !empty($item->is_active))->count()
+        ? $developers->filter(fn ($item) => $portalIsActive($item))->count()
         : 0;
+
+    $disabledDeveloperCount = max($developerCount - $activeDeveloperCount, 0);
+
+    $syncRoute = Route::has('developers.cpanel.sync') ? route('developers.cpanel.sync') : '#';
+    $bulkImportRoute = Route::has('developers.cpanel.bulk.import') ? route('developers.cpanel.bulk.import') : '#';
 
     $frameworkBadge = function ($framework) {
         return match ($framework) {
@@ -47,8 +67,10 @@
             'vue' => 'bg-green-100 text-green-700 border-green-200',
             'angular' => 'bg-rose-100 text-rose-700 border-rose-200',
             'node' => 'bg-lime-100 text-lime-700 border-lime-200',
+            'nextjs', 'nuxt', 'svelte' => 'bg-indigo-100 text-indigo-700 border-indigo-200',
             'python', 'flask', 'django', 'fastapi' => 'bg-yellow-100 text-yellow-700 border-yellow-200',
             'php' => 'bg-purple-100 text-purple-700 border-purple-200',
+            'java', 'springboot' => 'bg-orange-100 text-orange-700 border-orange-200',
             default => 'bg-slate-100 text-slate-700 border-slate-200',
         };
     };
@@ -60,28 +82,87 @@
             'react' => 'fa-brands fa-react',
             'vue' => 'fa-brands fa-vuejs',
             'angular' => 'fa-brands fa-angular',
-            'node' => 'fa-brands fa-node-js',
+            'node', 'nextjs', 'nuxt', 'svelte' => 'fa-brands fa-node-js',
             'python', 'flask', 'django', 'fastapi' => 'fa-brands fa-python',
             'php' => 'fa-brands fa-php',
-            'java' => 'fa-brands fa-java',
+            'java', 'springboot' => 'fa-brands fa-java',
             'html' => 'fa-brands fa-html5',
             default => 'fa-solid fa-code',
         };
     };
 @endphp
 
+<style>
+    .portal-switch-input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .portal-switch {
+        width: 58px;
+        height: 32px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        border: 1px solid #cbd5e1;
+        position: relative;
+        cursor: pointer;
+        transition: all .2s ease;
+        display: inline-flex;
+        align-items: center;
+        padding: 3px;
+    }
+
+    .portal-switch::after {
+        content: '';
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 6px 14px rgba(15, 23, 42, .18);
+        transform: translateX(0);
+        transition: all .2s ease;
+    }
+
+    .portal-switch-input:checked + .portal-switch {
+        background: #16a34a;
+        border-color: #15803d;
+    }
+
+    .portal-switch-input:checked + .portal-switch::after {
+        transform: translateX(26px);
+    }
+
+    .soft-scrollbar::-webkit-scrollbar {
+        height: 10px;
+        width: 10px;
+    }
+
+    .soft-scrollbar::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 999px;
+    }
+
+    .soft-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 999px;
+    }
+</style>
+
 <div class="space-y-6">
 
     {{-- Alerts --}}
     @if(session('success'))
         <div class="rounded-2xl bg-green-100 border border-green-300 text-green-800 p-4 font-black">
-            <i class="fa-solid fa-circle-check mr-2"></i>{{ session('success') }}
+            <i class="fa-solid fa-circle-check mr-2"></i>
+            {{ session('success') }}
         </div>
     @endif
 
     @if(session('error'))
         <div class="rounded-2xl bg-red-100 border border-red-300 text-red-800 p-4 font-black">
-            <i class="fa-solid fa-circle-exclamation mr-2"></i>{{ session('error') }}
+            <i class="fa-solid fa-circle-exclamation mr-2"></i>
+            {{ session('error') }}
         </div>
     @endif
 
@@ -106,7 +187,7 @@
                 <div>
                     <h2 class="text-2xl font-black">Developer Logins Created / Updated</h2>
                     <p class="text-slate-300 mt-1">
-                        Copy these passwords now. WHM/cPanel does not expose existing cPanel passwords, so Developer Codes generated temporary passwords.
+                        Copy these passwords now. Developer Codes generated temporary passwords for the portal.
                     </p>
                 </div>
 
@@ -125,6 +206,7 @@ Email: {{ $login['email'] ?? '-' }}
 Domain: {{ $login['domain'] ?? '-' }}
 Framework: {{ $login['framework'] ?? '-' }}
 Project Root: {{ $login['project_root'] ?? '-' }}
+Portal Access: {{ $login['portal_access'] ?? 'Enabled' }}
 Password: {{ $login['password'] ?? '-' }}
 
 @endforeach</pre>
@@ -152,12 +234,16 @@ Password: {{ $login['password'] ?? '-' }}
                         <i class="fa-solid fa-layer-group"></i>
                         Multi Framework
                     </span>
+
+                    <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-black">
+                        <i class="fa-solid fa-toggle-on"></i>
+                        Portal Access Control
+                    </span>
                 </div>
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
-                    Fetch cPanel accounts from WHM, choose the project framework for each user, tick the accounts you want,
-                    and create secure Developer Codes logins for Laravel, WordPress, PHP, React, Vue, Angular, Node.js,
-                    Python, Flask, Django, FastAPI, static websites, and custom frameworks.
+                    Fetch cPanel accounts, choose project frameworks, assign permissions, and turn Developer Portal access
+                    ON or OFF for each developer account.
                 </p>
 
                 <div class="mt-5 flex flex-wrap gap-2">
@@ -173,8 +259,12 @@ Password: {{ $login['password'] ?? '-' }}
                         Developer Users: {{ $developerCount }}
                     </span>
 
-                    <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
+                    <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/30 text-xs font-bold">
                         Active: {{ $activeDeveloperCount }}
+                    </span>
+
+                    <span class="px-4 py-2 rounded-full bg-red-500/20 border border-red-400/30 text-xs font-bold">
+                        Disabled: {{ $disabledDeveloperCount }}
                     </span>
                 </div>
             </div>
@@ -226,11 +316,11 @@ Password: {{ $login['password'] ?? '-' }}
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
             <div class="flex items-center justify-between gap-4">
                 <div>
-                    <p class="text-slate-500 font-bold">Frameworks</p>
-                    <h2 class="text-3xl font-black text-purple-600 mt-2">{{ count($frameworks) }}</h2>
+                    <p class="text-slate-500 font-bold">Portal Active</p>
+                    <h2 class="text-3xl font-black text-blue-600 mt-2">{{ $activeDeveloperCount }}</h2>
                 </div>
-                <div class="w-14 h-14 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center">
-                    <i class="fa-solid fa-code text-xl"></i>
+                <div class="w-14 h-14 rounded-2xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
+                    <i class="fa-solid fa-toggle-on text-xl"></i>
                 </div>
             </div>
         </div>
@@ -238,11 +328,11 @@ Password: {{ $login['password'] ?? '-' }}
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
             <div class="flex items-center justify-between gap-4">
                 <div>
-                    <p class="text-slate-500 font-bold">Portal Status</p>
-                    <h2 class="text-3xl font-black text-blue-600 mt-2">Ready</h2>
+                    <p class="text-slate-500 font-bold">Portal Disabled</p>
+                    <h2 class="text-3xl font-black text-red-600 mt-2">{{ $disabledDeveloperCount }}</h2>
                 </div>
-                <div class="w-14 h-14 rounded-2xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
-                    <i class="fa-solid fa-circle-check text-xl"></i>
+                <div class="w-14 h-14 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center">
+                    <i class="fa-solid fa-toggle-off text-xl"></i>
                 </div>
             </div>
         </div>
@@ -259,7 +349,7 @@ Password: {{ $login['password'] ?? '-' }}
             </div>
 
             <form method="POST"
-                  action="{{ route('developers.cpanel.sync') }}"
+                  action="{{ $syncRoute }}"
                   class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
                 @csrf
 
@@ -303,7 +393,7 @@ Password: {{ $login['password'] ?? '-' }}
 
     {{-- Imported cPanel Accounts --}}
     @if($cpanelAccounts->count())
-        <form method="POST" action="{{ route('developers.cpanel.bulk.import') }}">
+        <form method="POST" action="{{ $bulkImportRoute }}" id="bulkDeveloperImportForm">
             @csrf
 
             <input type="hidden" name="server_id" value="{{ $loadedServerId }}">
@@ -313,164 +403,159 @@ Password: {{ $login['password'] ?? '-' }}
                     <div>
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
-                            Tick accounts to add/update Developer Codes. Choose each account framework and permissions.
+                            Tick accounts, choose framework, permissions, and set Developer Portal access ON/OFF.
                         </p>
                     </div>
 
-                    <div class="flex flex-col md:flex-row gap-3">
+                    <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
                         <input type="text"
                                id="accountSearch"
-                               oninput="filterRows('accountSearch', '.cpanel-row')"
-                               placeholder="Search account, domain, email, framework..."
-                               class="w-full md:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                               oninput="accountPagination.apply()"
+                               placeholder="Search domain, username, email..."
+                               class="w-full md:w-80 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+
+                        <select id="accountPageSize"
+                                onchange="accountPagination.changePageSize()"
+                                class="w-full md:w-40 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="10">10 / page</option>
+                            <option value="20" selected>20 / page</option>
+                            <option value="30">30 / page</option>
+                            <option value="50">50 / page</option>
+                            <option value="100">100 / page</option>
+                        </select>
 
                         <button type="button"
-                                onclick="toggleAllAccounts(true)"
-                                class="px-5 py-3 rounded-2xl bg-slate-900 text-white font-black">
-                            Tick All
+                                onclick="selectVisibleAccounts(true)"
+                                class="px-5 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black">
+                            Select Visible
                         </button>
 
                         <button type="button"
-                                onclick="toggleAllAccounts(false)"
-                                class="px-5 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black">
-                            Untick All
-                        </button>
-
-                        <button class="px-6 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
-                            Create Selected
+                                onclick="selectVisibleAccounts(false)"
+                                class="px-5 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-black">
+                            Clear Visible
                         </button>
                     </div>
                 </div>
 
-                <div class="p-6 bg-slate-50 border-b">
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
-                        @foreach(['laravel', 'wordpress', 'react', 'vue', 'angular', 'node', 'python', 'flask', 'django', 'fastapi', 'php', 'custom'] as $quickFramework)
-                            <button type="button"
-                                    onclick="setVisibleFramework('{{ $quickFramework }}')"
-                                    class="px-4 py-3 rounded-2xl border bg-white hover:bg-slate-100 font-black text-sm">
-                                <i class="{{ $frameworkIcon($quickFramework) }} mr-2"></i>
-                                {{ $frameworks[$quickFramework] ?? ucfirst($quickFramework) }}
-                            </button>
-                        @endforeach
+                <div class="p-4 bg-slate-50 border-b flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-2 text-xs font-black">
+                        <span class="px-3 py-2 rounded-full bg-blue-100 text-blue-700">
+                            Total: {{ $cpanelAccounts->count() }}
+                        </span>
+                        <span class="px-3 py-2 rounded-full bg-green-100 text-green-700">
+                            Selected: <span id="selectedAccountCount">0</span>
+                        </span>
+                        <span class="px-3 py-2 rounded-full bg-purple-100 text-purple-700">
+                            Showing: <span id="accountShowingCount">0</span>
+                        </span>
                     </div>
 
-                    <p class="text-xs text-slate-500 mt-3 font-bold">
-                        Quick buttons apply the selected framework to all visible rows only.
-                    </p>
+                    <div class="flex items-center gap-2">
+                        <button type="button"
+                                id="accountPrevBtn"
+                                onclick="accountPagination.prev()"
+                                class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-black hover:bg-slate-100">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+
+                        <span id="accountPageInfo" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-black text-sm">
+                            Page 1
+                        </span>
+
+                        <button type="button"
+                                id="accountNextBtn"
+                                onclick="accountPagination.next()"
+                                class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-black hover:bg-slate-100">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
                 </div>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1800px] text-sm">
+                <div class="overflow-x-auto soft-scrollbar">
+                    <table class="w-full min-w-[1900px] text-sm">
                         <thead class="bg-slate-100">
                             <tr>
-                                <th class="p-4 text-left">Add</th>
-                                <th class="p-4 text-left">cPanel User</th>
-                                <th class="p-4 text-left">Domain</th>
-                                <th class="p-4 text-left">Contact Email</th>
+                                <th class="p-4 text-left w-16">Select</th>
+                                <th class="p-4 text-left">Account</th>
+                                <th class="p-4 text-left">Server</th>
                                 <th class="p-4 text-left">Framework</th>
                                 <th class="p-4 text-left">Project Root</th>
+                                <th class="p-4 text-left">Developer Portal</th>
                                 <th class="p-4 text-left">Commands</th>
                                 <th class="p-4 text-left">Permissions</th>
+                                <th class="p-4 text-left">Database</th>
                                 <th class="p-4 text-left">Status</th>
                             </tr>
                         </thead>
 
-                        <tbody>
-                            @foreach($cpanelAccounts as $account)
+                        <tbody id="accountTableBody" class="divide-y divide-slate-100">
+                            @foreach($cpanelAccounts as $index => $account)
                                 @php
-                                    $username = $account['user'] ?? null;
-
-                                    if (!$username) {
-                                        continue;
-                                    }
-
-                                    $exists = method_exists($developers, 'has') ? $developers->has($username) : false;
-                                    $suspended = !empty($account['suspended']);
+                                    $username = $account['user'] ?? 'user_' . $index;
+                                    $domain = $account['domain'] ?? '-';
+                                    $email = $account['email'] ?? '';
                                     $framework = $account['framework'] ?? 'custom';
-                                    $domain = $account['domain'] ?? '';
-                                    $home = $account['home'] ?? ('/home/' . $username);
-                                    $projectRoot = $account['project_root'] ?? ($home . '/public_html');
-                                    $safeName = preg_replace('/[^A-Za-z0-9_\-]/', '_', $username);
+                                    $existingDeveloper = $developers[$username] ?? null;
+                                    $alreadyExists = !empty($existingDeveloper);
+                                    $portalActive = $existingDeveloper ? $portalIsActive($existingDeveloper) : true;
+                                    $searchText = strtolower(($domain ?? '') . ' ' . ($username ?? '') . ' ' . ($email ?? '') . ' ' . ($account['ip'] ?? '') . ' ' . ($account['plan'] ?? '') . ' ' . $framework);
                                 @endphp
 
-                                <tr class="cpanel-row border-t hover:bg-slate-50"
-                                    data-username="{{ strtolower($username) }}"
-                                    data-framework="{{ $framework }}">
+                                <tr class="cpanel-account-row hover:bg-slate-50 transition"
+                                    data-search="{{ $searchText }}"
+                                    data-visible="1">
                                     <td class="p-4 align-top">
-                                        <input type="checkbox"
-                                               name="selected[]"
-                                               value="{{ $username }}"
-                                               class="account-checkbox w-5 h-5 rounded border-slate-300 text-blue-600"
-                                               {{ $exists ? 'checked' : '' }}>
+                                        <label class="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-slate-100 hover:bg-blue-100 cursor-pointer border border-slate-200">
+                                            <input type="checkbox"
+                                                   name="selected[]"
+                                                   value="{{ $username }}"
+                                                   class="account-select rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                   onchange="updateSelectedAccountCount()">
+                                        </label>
+
+                                        <input type="hidden" name="accounts[{{ $username }}][user]" value="{{ $username }}">
+                                        <input type="hidden" name="accounts[{{ $username }}][name]" value="{{ $account['name'] ?? $username }}">
+                                        <input type="hidden" name="accounts[{{ $username }}][email]" value="{{ $email }}">
+                                        <input type="hidden" name="accounts[{{ $username }}][domain]" value="{{ $domain }}">
+                                        <input type="hidden" name="accounts[{{ $username }}][server_id]" value="{{ $account['server_id'] ?? $loadedServerId }}">
                                     </td>
 
                                     <td class="p-4 align-top">
-                                        <div class="font-black text-slate-900">{{ $username }}</div>
-
-                                        <div class="text-xs text-slate-500 mt-1">
-                                            IP: {{ $account['ip'] ?? '-' }}
-                                        </div>
-
-                                        <div class="text-xs text-slate-500">
-                                            Plan: {{ $account['plan'] ?? '-' }}
-                                        </div>
-
-                                        <div class="text-xs text-slate-500">
-                                            Disk: {{ $account['diskused'] ?? '-' }} / {{ $account['disklimit'] ?? '-' }}
-                                        </div>
-
-                                        @foreach($account as $key => $value)
-                                            @if(!is_array($value) && !in_array($key, [
-                                                'email',
-                                                'framework',
-                                                'project_type',
-                                                'project_root',
-                                                'build_command',
-                                                'deploy_command',
-                                                'start_command',
-                                                'can_view_files',
-                                                'can_clear_cache',
-                                                'can_git_pull',
-                                                'can_composer',
-                                                'can_npm',
-                                                'can_run_build',
-                                                'can_run_python',
-                                                'can_restart_app',
-                                                'can_edit_files',
-                                                'can_delete_files',
-                                            ]))
-                                                <input type="hidden"
-                                                       name="accounts[{{ $username }}][{{ $key }}]"
-                                                       value="{{ $value }}">
-                                            @endif
-                                        @endforeach
-                                    </td>
-
-                                    <td class="p-4 align-top">
-                                        <div class="font-bold text-slate-800">{{ $domain ?: '-' }}</div>
-                                        <div class="text-xs text-slate-500 mt-1">{{ $home }}</div>
-
-                                        @if(!empty($account['suspendreason']))
-                                            <div class="mt-2 text-xs text-red-600 font-bold">
-                                                {{ $account['suspendreason'] }}
+                                        <div class="flex items-start gap-3">
+                                            <div class="w-11 h-11 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                                                <i class="fa-solid fa-globe"></i>
                                             </div>
-                                        @endif
+
+                                            <div>
+                                                <div class="font-black text-slate-900">{{ $domain }}</div>
+
+                                                <div class="text-xs text-slate-500 mt-1">
+                                                    <span class="font-black">User:</span> {{ $username }}
+                                                </div>
+
+                                                <div class="text-xs text-slate-500 mt-1">
+                                                    <span class="font-black">Email:</span> {{ $email ?: '-' }}
+                                                </div>
+
+                                                <div class="text-xs text-slate-500 mt-1">
+                                                    <span class="font-black">IP:</span> {{ $account['ip'] ?? '-' }}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </td>
 
                                     <td class="p-4 align-top">
-                                        <input type="email"
-                                               name="accounts[{{ $username }}][email]"
-                                               value="{{ $account['email'] ?? '' }}"
-                                               placeholder="contact@email.com"
-                                               class="w-full min-w-64 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                                        <div class="font-black text-slate-900">{{ $account['server_name'] ?? '-' }}</div>
+                                        <div class="text-xs text-slate-500 mt-1">{{ $account['server_host'] ?? '-' }}</div>
+                                        <div class="mt-2 inline-flex px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-black">
+                                            {{ $account['plan'] ?? 'default' }}
+                                        </div>
                                     </td>
 
                                     <td class="p-4 align-top">
                                         <select name="accounts[{{ $username }}][framework]"
-                                                id="framework_{{ $safeName }}"
-                                                data-safe-name="{{ $safeName }}"
-                                                onchange="applyFrameworkDefaults(this, '{{ $safeName }}'); updateRowFramework(this);"
-                                                class="framework-select w-full min-w-56 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                                                class="w-48 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 font-bold">
                                             @foreach($frameworks as $key => $label)
                                                 <option value="{{ $key }}" {{ $framework === $key ? 'selected' : '' }}>
                                                     {{ $label }}
@@ -478,123 +563,157 @@ Password: {{ $login['password'] ?? '-' }}
                                             @endforeach
                                         </select>
 
-                                        <input type="hidden"
-                                               name="accounts[{{ $username }}][project_type]"
-                                               id="project_type_{{ $safeName }}"
-                                               value="{{ $account['project_type'] ?? 'web' }}">
-
-                                        <div class="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full border {{ $frameworkBadge($framework) }} text-xs font-black">
-                                            <i class="{{ $frameworkIcon($framework) }}"></i>
-                                            <span id="framework_badge_{{ $safeName }}">
-                                                {{ $frameworks[$framework] ?? ucfirst($framework) }}
-                                            </span>
-                                        </div>
+                                        <input type="hidden" name="accounts[{{ $username }}][project_type]" value="{{ $account['project_type'] ?? 'custom' }}">
                                     </td>
 
                                     <td class="p-4 align-top">
                                         <input type="text"
                                                name="accounts[{{ $username }}][project_root]"
-                                               id="project_root_{{ $safeName }}"
-                                               value="{{ $projectRoot }}"
-                                               class="w-full min-w-72 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+                                               value="{{ $account['project_root'] ?? '/home/' . $username . '/public_html' }}"
+                                               class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-xs">
 
                                         <div class="text-xs text-slate-500 mt-2">
-                                            Example: /home/{{ $username }}/public_html or /home/{{ $username }}/app
+                                            Home: {{ $account['home'] ?? '/home/' . $username }}
                                         </div>
                                     </td>
 
                                     <td class="p-4 align-top">
-                                        <div class="space-y-2 min-w-96">
+                                        <div class="flex items-center gap-3">
+                                            <input type="hidden" name="accounts[{{ $username }}][developer_portal_access]" value="0">
+
+                                            <label class="flex items-center gap-3 cursor-pointer">
+                                                <input type="checkbox"
+                                                       class="portal-switch-input account-portal-toggle"
+                                                       name="accounts[{{ $username }}][developer_portal_access]"
+                                                       value="1"
+                                                       {{ $portalActive ? 'checked' : '' }}
+                                                       onchange="updateInlinePortalLabel(this)">
+                                                <span class="portal-switch"></span>
+                                            </label>
+
+                                            <span class="portal-inline-label px-3 py-1 rounded-full text-xs font-black {{ $portalActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                                {{ $portalActive ? 'ON' : 'OFF' }}
+                                            </span>
+                                        </div>
+
+                                        <div class="text-xs text-slate-500 mt-2 max-w-[220px]">
+                                            Controls whether the developer can login to Developer Portal after import.
+                                        </div>
+                                    </td>
+
+                                    <td class="p-4 align-top">
+                                        <div class="grid grid-cols-1 gap-2">
                                             <input type="text"
                                                    name="accounts[{{ $username }}][build_command]"
-                                                   id="build_command_{{ $safeName }}"
                                                    value="{{ $account['build_command'] ?? '' }}"
                                                    placeholder="Build command"
-                                                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                                                   class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
 
                                             <input type="text"
                                                    name="accounts[{{ $username }}][deploy_command]"
-                                                   id="deploy_command_{{ $safeName }}"
                                                    value="{{ $account['deploy_command'] ?? '' }}"
                                                    placeholder="Deploy command"
-                                                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                                                   class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
 
                                             <input type="text"
                                                    name="accounts[{{ $username }}][start_command]"
-                                                   id="start_command_{{ $safeName }}"
                                                    value="{{ $account['start_command'] ?? '' }}"
                                                    placeholder="Start command"
-                                                   class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs outline-none focus:ring-2 focus:ring-blue-500">
+                                                   class="w-80 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
                                         </div>
                                     </td>
 
                                     <td class="p-4 align-top">
-                                        <div class="grid grid-cols-2 xl:grid-cols-3 gap-2 min-w-80">
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_view_files]" value="1" {{ !empty($account['can_view_files']) ? 'checked' : '' }}>
-                                                View
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_clear_cache]" value="1" {{ !empty($account['can_clear_cache']) ? 'checked' : '' }}>
-                                                Cache
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_git_pull]" value="1" {{ !empty($account['can_git_pull']) ? 'checked' : '' }}>
-                                                Git
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_composer]" value="1" {{ !empty($account['can_composer']) ? 'checked' : '' }}>
-                                                Composer
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_npm]" value="1" {{ !empty($account['can_npm']) ? 'checked' : '' }}>
-                                                NPM
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_run_build]" value="1" {{ !empty($account['can_run_build']) ? 'checked' : '' }}>
-                                                Build
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_run_python]" value="1" {{ !empty($account['can_run_python']) ? 'checked' : '' }}>
-                                                Python
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_restart_app]" value="1" {{ !empty($account['can_restart_app']) ? 'checked' : '' }}>
-                                                Restart
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold text-red-700">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_edit_files]" value="1" {{ !empty($account['can_edit_files']) ? 'checked' : '' }}>
-                                                Edit
-                                            </label>
-
-                                            <label class="flex items-center gap-2 text-xs font-bold text-red-700">
-                                                <input type="checkbox" name="accounts[{{ $username }}][can_delete_files]" value="1" {{ !empty($account['can_delete_files']) ? 'checked' : '' }}>
-                                                Delete
-                                            </label>
+                                        <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+                                            @foreach([
+                                                'can_view_files' => 'View Files',
+                                                'can_edit_files' => 'Edit Files',
+                                                'can_delete_files' => 'Delete',
+                                                'can_git_pull' => 'Git Pull',
+                                                'can_clear_cache' => 'Clear Cache',
+                                                'can_composer' => 'Composer',
+                                                'can_npm' => 'NPM',
+                                                'can_run_build' => 'Build',
+                                                'can_run_python' => 'Python',
+                                                'can_restart_app' => 'Restart',
+                                            ] as $permission => $label)
+                                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+                                                    <input type="checkbox"
+                                                           name="accounts[{{ $username }}][{{ $permission }}]"
+                                                           value="1"
+                                                           class="rounded border-slate-300 text-blue-600"
+                                                           {{ !empty($account[$permission]) ? 'checked' : '' }}>
+                                                    {{ $label }}
+                                                </label>
+                                            @endforeach
                                         </div>
                                     </td>
 
                                     <td class="p-4 align-top">
-                                        @if($exists)
+                                        <div class="grid grid-cols-1 gap-2">
+                                            <select name="accounts[{{ $username }}][db_type]"
+                                                    class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs font-bold">
+                                                <option value="mysql" {{ ($account['db_type'] ?? 'mysql') === 'mysql' ? 'selected' : '' }}>MySQL</option>
+                                                <option value="postgresql" {{ ($account['db_type'] ?? '') === 'postgresql' ? 'selected' : '' }}>PostgreSQL</option>
+                                            </select>
+
+                                            <input type="text"
+                                                   name="accounts[{{ $username }}][db_host]"
+                                                   value="{{ $account['db_host'] ?? 'localhost' }}"
+                                                   placeholder="DB Host"
+                                                   class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+
+                                            <input type="text"
+                                                   name="accounts[{{ $username }}][db_username]"
+                                                   value="{{ $account['db_username'] ?? $username }}"
+                                                   placeholder="DB Username"
+                                                   class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+
+                                            <input type="text"
+                                                   name="accounts[{{ $username }}][db_name]"
+                                                   value="{{ $account['db_name'] ?? '' }}"
+                                                   placeholder="DB Name"
+                                                   class="w-44 px-3 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500 text-xs">
+
+                                            <div class="grid grid-cols-2 gap-2 text-xs font-bold">
+                                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+                                                    <input type="checkbox"
+                                                           name="accounts[{{ $username }}][can_mysql]"
+                                                           value="1"
+                                                           class="rounded border-slate-300 text-blue-600"
+                                                           {{ !empty($account['can_mysql']) ? 'checked' : '' }}>
+                                                    MySQL
+                                                </label>
+
+                                                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+                                                    <input type="checkbox"
+                                                           name="accounts[{{ $username }}][can_postgresql]"
+                                                           value="1"
+                                                           class="rounded border-slate-300 text-blue-600"
+                                                           {{ !empty($account['can_postgresql']) ? 'checked' : '' }}>
+                                                    PGSQL
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <td class="p-4 align-top">
+                                        @if($alreadyExists)
                                             <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-black">
-                                                Already Developer
-                                            </span>
-                                        @elseif($suspended)
-                                            <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black">
-                                                Suspended
+                                                Existing Developer
                                             </span>
                                         @else
                                             <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-black">
                                                 Ready
                                             </span>
+                                        @endif
+
+                                        @if(!empty($account['suspended']))
+                                            <div class="mt-2">
+                                                <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black">
+                                                    Suspended
+                                                </span>
+                                            </div>
                                         @endif
                                     </td>
                                 </tr>
@@ -605,7 +724,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div class="p-6 border-t bg-slate-50 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div class="text-sm text-slate-500 font-bold">
-                        Selected users will be created as Developer Codes accounts with their chosen framework and permissions.
+                        Selected users will be created as Developer Codes accounts with their chosen framework, permissions, database access and portal access status.
                     </div>
 
                     <button class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
@@ -645,8 +764,8 @@ Password: {{ $login['password'] ?? '-' }}
                    class="w-full xl:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[1400px] text-sm">
+        <div class="overflow-x-auto soft-scrollbar">
+            <table class="w-full min-w-[1500px] text-sm">
                 <thead class="bg-slate-100">
                     <tr>
                         <th class="p-4 text-left">Developer</th>
@@ -655,116 +774,166 @@ Password: {{ $login['password'] ?? '-' }}
                         <th class="p-4 text-left">Framework</th>
                         <th class="p-4 text-left">Project Root</th>
                         <th class="p-4 text-left">Permissions</th>
-                        <th class="p-4 text-left">Status</th>
+                        <th class="p-4 text-left">Portal Access</th>
                         <th class="p-4 text-right">Actions</th>
                     </tr>
                 </thead>
 
-                <tbody>
-                    @forelse($developers as $developerUser)
+                <tbody class="divide-y divide-slate-100">
+                    @forelse($developers as $developer)
                         @php
-                            $developerFramework = $developerUser->framework ?: 'custom';
+                            $developerPortalEnabled = $portalIsActive($developer);
+                            $developerSearchText = strtolower(
+                                ($developer->name ?? '') . ' ' .
+                                ($developer->email ?? '') . ' ' .
+                                ($developer->cpanel_username ?? '') . ' ' .
+                                ($developer->cpanel_domain ?? '') . ' ' .
+                                ($developer->framework ?? '')
+                            );
+
+                            $toggleRoute = Route::has('developers.toggle') ? route('developers.toggle', $developer->id) : '#';
+                            $resetRoute = Route::has('developers.reset-password') ? route('developers.reset-password', $developer->id) : '#';
+                            $deleteRoute = Route::has('developers.destroy') ? route('developers.destroy', $developer->id) : '#';
                         @endphp
 
-                        <tr class="developer-row border-t hover:bg-slate-50">
-                            <td class="p-4">
-                                <div class="font-black text-slate-900">{{ $developerUser->name }}</div>
-                                <div class="text-xs text-slate-500">{{ $developerUser->email }}</div>
-                            </td>
-
-                            <td class="p-4">
-                                <div class="font-black text-slate-900">{{ $developerUser->cpanel_username ?? '-' }}</div>
-                                <div class="text-xs text-slate-500">{{ $developerUser->contact_email ?? '-' }}</div>
-                            </td>
-
-                            <td class="p-4">
-                                {{ $developerUser->cpanel_domain ?? '-' }}
-                            </td>
-
-                            <td class="p-4">
-                                <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border {{ $frameworkBadge($developerFramework) }} text-xs font-black">
-                                    <i class="{{ $frameworkIcon($developerFramework) }}"></i>
-                                    {{ $frameworks[$developerFramework] ?? ucfirst($developerFramework) }}
-                                </span>
-
-                                <div class="text-xs text-slate-500 mt-2">
-                                    Type: {{ $developerUser->project_type ?? 'custom' }}
-                                </div>
-                            </td>
-
-                            <td class="p-4">
-                                <div class="text-xs font-bold text-slate-700 break-all">
-                                    {{ $developerUser->project_root ?? $developerUser->allowed_project_path ?? '-' }}
-                                </div>
-                            </td>
-
-                            <td class="p-4">
-                                <div class="flex flex-wrap gap-1">
-                                    @if($developerUser->can_view_files)<span class="px-2 py-1 rounded-lg bg-blue-100 text-blue-700 text-xs font-bold">View</span>@endif
-                                    @if($developerUser->can_clear_cache)<span class="px-2 py-1 rounded-lg bg-cyan-100 text-cyan-700 text-xs font-bold">Cache</span>@endif
-                                    @if($developerUser->can_git_pull)<span class="px-2 py-1 rounded-lg bg-green-100 text-green-700 text-xs font-bold">Git</span>@endif
-                                    @if($developerUser->can_composer)<span class="px-2 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">Composer</span>@endif
-                                    @if($developerUser->can_npm)<span class="px-2 py-1 rounded-lg bg-orange-100 text-orange-700 text-xs font-bold">NPM</span>@endif
-                                    @if($developerUser->can_run_build)<span class="px-2 py-1 rounded-lg bg-yellow-100 text-yellow-700 text-xs font-bold">Build</span>@endif
-                                    @if($developerUser->can_run_python)<span class="px-2 py-1 rounded-lg bg-yellow-100 text-yellow-800 text-xs font-bold">Python</span>@endif
-                                    @if($developerUser->can_restart_app)<span class="px-2 py-1 rounded-lg bg-slate-200 text-slate-800 text-xs font-bold">Restart</span>@endif
-                                    @if($developerUser->can_edit_files)<span class="px-2 py-1 rounded-lg bg-red-100 text-red-700 text-xs font-bold">Edit</span>@endif
-                                    @if($developerUser->can_delete_files)<span class="px-2 py-1 rounded-lg bg-red-200 text-red-800 text-xs font-bold">Delete</span>@endif
-                                </div>
-                            </td>
-
-                            <td class="p-4">
-                                @if($developerUser->is_active)
-                                    <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-black">
-                                        Active
-                                    </span>
-                                @else
-                                    <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black">
-                                        Disabled
-                                    </span>
-                                @endif
-
-                                @if(!empty($developerUser->password_must_change))
-                                    <div class="mt-2">
-                                        <span class="px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-black">
-                                            Must Change Password
-                                        </span>
+                        <tr class="developer-row hover:bg-slate-50 transition" data-search="{{ $developerSearchText }}">
+                            <td class="p-4 align-top">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-11 h-11 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
+                                        <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
                                     </div>
-                                @endif
+
+                                    <div>
+                                        <div class="font-black text-slate-900">{{ $developer->name ?? '-' }}</div>
+                                        <div class="text-xs text-slate-500 mt-1">{{ $developer->email ?? '-' }}</div>
+                                        <div class="text-xs text-slate-500 mt-1">
+                                            Last login:
+                                            {{ !empty($developer->last_login_at) ? \Carbon\Carbon::parse($developer->last_login_at)->diffForHumans() : 'Never' }}
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
 
-                            <td class="p-4 text-right">
-                                <div class="flex flex-wrap justify-end gap-2">
-                                    <form method="POST" action="{{ route('developers.reset.password', $developerUser) }}">
-                                        @csrf
-                                        <button class="px-3 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-bold"
-                                                onclick="return confirm('Reset temporary password for this developer?')">
-                                            Reset
-                                        </button>
-                                    </form>
+                            <td class="p-4 align-top">
+                                <div class="font-black text-slate-900">{{ $developer->cpanel_username ?? '-' }}</div>
+                                <div class="text-xs text-slate-500 mt-1">{{ $developer->ssh_username ?? '-' }}</div>
+                            </td>
 
-                                    <form method="POST" action="{{ route('developers.toggle', $developerUser) }}">
-                                        @csrf
-                                        <button class="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-700 text-white font-bold">
-                                            {{ $developerUser->is_active ? 'Disable' : 'Enable' }}
-                                        </button>
-                                    </form>
+                            <td class="p-4 align-top">
+                                <div class="font-black text-slate-900">{{ $developer->cpanel_domain ?? '-' }}</div>
+                                <div class="text-xs text-slate-500 mt-1">{{ $developer->contact_email ?? '-' }}</div>
+                            </td>
 
-                                    <form method="POST" action="{{ route('developers.destroy', $developerUser) }}">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button class="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold"
-                                                onclick="return confirm('Delete this developer login?')">
-                                            Delete
-                                        </button>
-                                    </form>
+                            <td class="p-4 align-top">
+                                <span class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
+                                    <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
+                                    {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
+                                </span>
+                            </td>
+
+                            <td class="p-4 align-top">
+                                <div class="text-xs font-bold text-slate-700 max-w-[300px] break-all">
+                                    {{ $developer->project_root ?? $developer->allowed_project_path ?? '-' }}
+                                </div>
+                            </td>
+
+                            <td class="p-4 align-top">
+                                <div class="flex flex-wrap gap-2 text-xs font-black">
+                                    @foreach([
+                                        'can_view_files' => 'Files',
+                                        'can_edit_files' => 'Edit',
+                                        'can_git_pull' => 'Git',
+                                        'can_clear_cache' => 'Cache',
+                                        'can_composer' => 'Composer',
+                                        'can_npm' => 'NPM',
+                                        'can_run_build' => 'Build',
+                                        'can_run_python' => 'Python',
+                                        'can_mysql' => 'MySQL',
+                                        'can_postgresql' => 'PGSQL',
+                                    ] as $permission => $label)
+                                        @if(!empty($developer->{$permission}))
+                                            <span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                                {{ $label }}
+                                            </span>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </td>
+
+                            <td class="p-4 align-top">
+                                <div class="flex items-center gap-3">
+                                    @if(Route::has('developers.toggle'))
+                                        <form method="POST"
+                                              action="{{ $toggleRoute }}"
+                                              class="developer-toggle-form"
+                                              data-enabled="{{ $developerPortalEnabled ? '1' : '0' }}">
+                                            @csrf
+
+                                            <button type="submit"
+                                                    class="group flex items-center gap-3 px-4 py-3 rounded-2xl border transition {{ $developerPortalEnabled ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100' }}"
+                                                    title="{{ $developerPortalEnabled ? 'Turn Off Portal Access' : 'Turn On Portal Access' }}">
+                                                <span class="relative inline-flex h-8 w-14 rounded-full transition {{ $developerPortalEnabled ? 'bg-green-600' : 'bg-slate-300' }}">
+                                                    <span class="absolute top-1 h-6 w-6 rounded-full bg-white shadow transition {{ $developerPortalEnabled ? 'left-7' : 'left-1' }}"></span>
+                                                </span>
+
+                                                <span class="font-black text-xs">
+                                                    {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                                                </span>
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span class="px-4 py-2 rounded-2xl text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                            {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                                        </span>
+                                    @endif
+                                </div>
+
+                                <div class="mt-2 text-xs font-bold {{ $developerPortalEnabled ? 'text-green-600' : 'text-red-600' }}">
+                                    {{ $developerPortalEnabled ? 'Developer can login' : 'Developer login blocked' }}
+                                </div>
+                            </td>
+
+                            <td class="p-4 align-top text-right">
+                                <div class="flex justify-end gap-2">
+                                    @if(Route::has('developers.reset-password'))
+                                        <form method="POST" action="{{ $resetRoute }}">
+                                            @csrf
+                                            <button type="submit"
+                                                    class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
+                                                <i class="fa-solid fa-key mr-1"></i>
+                                                Reset
+                                            </button>
+                                        </form>
+                                    @endif
+
+                                    @if(Route::has('developers.destroy'))
+                                        <form method="POST"
+                                              action="{{ $deleteRoute }}"
+                                              onsubmit="return confirm('Delete this developer login?')">
+                                            @csrf
+                                            @method('DELETE')
+
+                                            <button type="submit"
+                                                    class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs">
+                                                <i class="fa-solid fa-trash mr-1"></i>
+                                                Delete
+                                            </button>
+                                        </form>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="p-10 text-center text-slate-500">
-                                No developer users created yet. Fetch cPanel users above and tick accounts to add.
+                            <td colspan="8" class="p-10 text-center">
+                                <div class="w-20 h-20 mx-auto rounded-3xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                                    <i class="fa-solid fa-user-shield text-3xl"></i>
+                                </div>
+
+                                <h3 class="text-xl font-black text-slate-900 mt-4">No developer users yet</h3>
+                                <p class="text-slate-500 mt-2">
+                                    Fetch cPanel accounts and create Developer Codes logins.
+                                </p>
                             </td>
                         </tr>
                     @endforelse
@@ -773,282 +942,173 @@ Password: {{ $login['password'] ?? '-' }}
         </div>
     </div>
 
-    {{-- Security Info --}}
-    <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
-        <h2 class="text-2xl font-black text-slate-900 mb-4">Framework Support</h2>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div class="rounded-2xl border p-5">
-                <h3 class="font-black text-slate-900">
-                    PHP / Laravel / WordPress
-                </h3>
-                <p class="text-sm text-slate-500 mt-2">
-                    Supports Composer, Laravel cache commands, PHP projects and WordPress file work.
-                </p>
-            </div>
-
-            <div class="rounded-2xl border p-5">
-                <h3 class="font-black text-slate-900">
-                    React / Vue / Angular
-                </h3>
-                <p class="text-sm text-slate-500 mt-2">
-                    Supports NPM install, build commands and frontend project roots.
-                </p>
-            </div>
-
-            <div class="rounded-2xl border p-5">
-                <h3 class="font-black text-slate-900">
-                    Node.js / Express
-                </h3>
-                <p class="text-sm text-slate-500 mt-2">
-                    Supports Node project commands, app start command and controlled restart permission.
-                </p>
-            </div>
-
-            <div class="rounded-2xl border p-5">
-                <h3 class="font-black text-slate-900">
-                    Python / Flask / Django / FastAPI
-                </h3>
-                <p class="text-sm text-slate-500 mt-2">
-                    Supports Python virtualenv, requirements installation and framework-specific start commands.
-                </p>
-            </div>
-        </div>
-    </div>
-
 </div>
 
 <script>
-const frameworkLabels = @json($frameworks);
+    function copyText(elementId) {
+        const element = document.getElementById(elementId);
 
-const frameworkDefaults = {
-    custom: {
-        project_type: 'custom',
-        build: '',
-        deploy: '',
-        start: ''
-    },
-    html: {
-        project_type: 'static',
-        build: '',
-        deploy: '',
-        start: ''
-    },
-    php: {
-        project_type: 'php',
-        build: 'composer install --no-dev',
-        deploy: '',
-        start: ''
-    },
-    wordpress: {
-        project_type: 'cms',
-        build: '',
-        deploy: '',
-        start: ''
-    },
-    laravel: {
-        project_type: 'php',
-        build: 'composer install --no-dev && php artisan optimize:clear',
-        deploy: 'php artisan migrate --force && php artisan optimize:clear',
-        start: ''
-    },
-    react: {
-        project_type: 'frontend',
-        build: 'npm install && npm run build',
-        deploy: 'npm run build',
-        start: 'npm run dev'
-    },
-    vue: {
-        project_type: 'frontend',
-        build: 'npm install && npm run build',
-        deploy: 'npm run build',
-        start: 'npm run dev'
-    },
-    angular: {
-        project_type: 'frontend',
-        build: 'npm install && npm run build',
-        deploy: 'npm run build',
-        start: 'ng serve'
-    },
-    nextjs: {
-        project_type: 'frontend',
-        build: 'npm install && npm run build',
-        deploy: 'npm run build',
-        start: 'npm run start'
-    },
-    nuxt: {
-        project_type: 'frontend',
-        build: 'npm install && npm run build',
-        deploy: 'npm run build',
-        start: 'npm run start'
-    },
-    svelte: {
-        project_type: 'frontend',
-        build: 'npm install && npm run build',
-        deploy: 'npm run build',
-        start: 'npm run dev'
-    },
-    node: {
-        project_type: 'node',
-        build: 'npm install',
-        deploy: 'npm install --production',
-        start: 'npm start'
-    },
-    python: {
-        project_type: 'python',
-        build: 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-        deploy: './venv/bin/pip install -r requirements.txt',
-        start: 'python3 app.py'
-    },
-    flask: {
-        project_type: 'python',
-        build: 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-        deploy: './venv/bin/pip install -r requirements.txt',
-        start: './venv/bin/flask run'
-    },
-    django: {
-        project_type: 'python',
-        build: 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-        deploy: './venv/bin/python manage.py migrate && ./venv/bin/python manage.py collectstatic --noinput',
-        start: './venv/bin/python manage.py runserver'
-    },
-    fastapi: {
-        project_type: 'python',
-        build: 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-        deploy: './venv/bin/pip install -r requirements.txt',
-        start: './venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000'
-    },
-    java: {
-        project_type: 'java',
-        build: './mvnw clean package',
-        deploy: './mvnw clean package -DskipTests',
-        start: 'java -jar target/app.jar'
-    },
-    dotnet: {
-        project_type: 'dotnet',
-        build: 'dotnet restore && dotnet build',
-        deploy: 'dotnet publish -c Release',
-        start: 'dotnet run'
-    },
-    ruby: {
-        project_type: 'ruby',
-        build: 'bundle install',
-        deploy: 'bundle install --deployment',
-        start: 'bundle exec rails server'
-    },
-    go: {
-        project_type: 'go',
-        build: 'go mod download && go build',
-        deploy: 'go build',
-        start: './app'
-    }
-};
-
-function copyText(id) {
-    const el = document.getElementById(id);
-
-    if (!el) {
-        return;
-    }
-
-    const text = el.innerText || el.textContent || '';
-
-    navigator.clipboard.writeText(text).then(function () {
-        alert('Copied');
-    }).catch(function () {
-        const range = document.createRange();
-        range.selectNodeContents(el);
-
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        document.execCommand('copy');
-        selection.removeAllRanges();
-
-        alert('Copied');
-    });
-}
-
-function filterRows(inputId, rowSelector) {
-    const input = document.getElementById(inputId);
-    const search = input ? input.value.toLowerCase() : '';
-
-    document.querySelectorAll(rowSelector).forEach(function(row) {
-        row.style.display = row.innerText.toLowerCase().includes(search) ? '' : 'none';
-    });
-}
-
-function toggleAllAccounts(status) {
-    document.querySelectorAll('.account-checkbox').forEach(function(box) {
-        if (box.closest('tr').style.display !== 'none') {
-            box.checked = status;
-        }
-    });
-}
-
-function applyFrameworkDefaults(select, safeName) {
-    const framework = select.value;
-    const defaults = frameworkDefaults[framework] || frameworkDefaults.custom;
-
-    const projectType = document.getElementById('project_type_' + safeName);
-    const build = document.getElementById('build_command_' + safeName);
-    const deploy = document.getElementById('deploy_command_' + safeName);
-    const start = document.getElementById('start_command_' + safeName);
-
-    if (projectType) {
-        projectType.value = defaults.project_type;
-    }
-
-    if (build) {
-        build.value = defaults.build;
-    }
-
-    if (deploy) {
-        deploy.value = defaults.deploy;
-    }
-
-    if (start) {
-        start.value = defaults.start;
-    }
-}
-
-function updateRowFramework(select) {
-    const row = select.closest('tr');
-
-    if (!row) {
-        return;
-    }
-
-    row.dataset.framework = select.value;
-
-    const safeName = select.dataset.safeName;
-    const badge = document.getElementById('framework_badge_' + safeName);
-
-    if (badge) {
-        badge.innerText = frameworkLabels[select.value] || select.value;
-    }
-}
-
-function setVisibleFramework(framework) {
-    document.querySelectorAll('.cpanel-row').forEach(function(row) {
-        if (row.style.display === 'none') {
+        if (!element) {
             return;
         }
 
-        const select = row.querySelector('.framework-select');
+        navigator.clipboard.writeText(element.innerText || element.textContent || '');
+    }
 
-        if (!select) {
+    function filterRows(inputId, rowSelector) {
+        const input = document.getElementById(inputId);
+        const query = (input?.value || '').toLowerCase().trim();
+        const rows = document.querySelectorAll(rowSelector);
+
+        rows.forEach(row => {
+            const text = (row.dataset.search || row.innerText || '').toLowerCase();
+            row.style.display = text.includes(query) ? '' : 'none';
+        });
+    }
+
+    function updateInlinePortalLabel(input) {
+        const row = input.closest('tr');
+        const label = row?.querySelector('.portal-inline-label');
+
+        if (!label) {
             return;
         }
 
-        select.value = framework;
-        const safeName = select.dataset.safeName;
+        if (input.checked) {
+            label.textContent = 'ON';
+            label.className = 'portal-inline-label px-3 py-1 rounded-full text-xs font-black bg-green-100 text-green-700';
+        } else {
+            label.textContent = 'OFF';
+            label.className = 'portal-inline-label px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-700';
+        }
+    }
 
-        applyFrameworkDefaults(select, safeName);
-        updateRowFramework(select);
+    function updateSelectedAccountCount() {
+        const selected = document.querySelectorAll('.account-select:checked').length;
+        const selectedBox = document.getElementById('selectedAccountCount');
+
+        if (selectedBox) {
+            selectedBox.textContent = selected;
+        }
+    }
+
+    function selectVisibleAccounts(checked) {
+        document.querySelectorAll('.cpanel-account-row').forEach(row => {
+            if (row.style.display !== 'none') {
+                const checkbox = row.querySelector('.account-select');
+                if (checkbox) {
+                    checkbox.checked = checked;
+                }
+            }
+        });
+
+        updateSelectedAccountCount();
+    }
+
+    const accountPagination = {
+        page: 1,
+        pageSize: 20,
+
+        rows() {
+            return Array.from(document.querySelectorAll('.cpanel-account-row'));
+        },
+
+        filteredRows() {
+            const search = (document.getElementById('accountSearch')?.value || '').toLowerCase().trim();
+
+            return this.rows().filter(row => {
+                const text = (row.dataset.search || row.innerText || '').toLowerCase();
+                return text.includes(search);
+            });
+        },
+
+        totalPages() {
+            const total = this.filteredRows().length;
+            return Math.max(Math.ceil(total / this.pageSize), 1);
+        },
+
+        apply() {
+            const rows = this.rows();
+            const filtered = this.filteredRows();
+
+            const totalPages = this.totalPages();
+
+            if (this.page > totalPages) {
+                this.page = totalPages;
+            }
+
+            if (this.page < 1) {
+                this.page = 1;
+            }
+
+            rows.forEach(row => {
+                row.style.display = 'none';
+                row.dataset.visible = '0';
+            });
+
+            const start = (this.page - 1) * this.pageSize;
+            const end = start + this.pageSize;
+
+            filtered.slice(start, end).forEach(row => {
+                row.style.display = '';
+                row.dataset.visible = '1';
+            });
+
+            const pageInfo = document.getElementById('accountPageInfo');
+            const showingCount = document.getElementById('accountShowingCount');
+            const prevBtn = document.getElementById('accountPrevBtn');
+            const nextBtn = document.getElementById('accountNextBtn');
+
+            if (pageInfo) {
+                pageInfo.textContent = `Page ${this.page} of ${totalPages}`;
+            }
+
+            if (showingCount) {
+                const showing = filtered.slice(start, end).length;
+                showingCount.textContent = `${showing} / ${filtered.length}`;
+            }
+
+            if (prevBtn) {
+                prevBtn.disabled = this.page <= 1;
+                prevBtn.classList.toggle('opacity-50', this.page <= 1);
+                prevBtn.classList.toggle('cursor-not-allowed', this.page <= 1);
+            }
+
+            if (nextBtn) {
+                nextBtn.disabled = this.page >= totalPages;
+                nextBtn.classList.toggle('opacity-50', this.page >= totalPages);
+                nextBtn.classList.toggle('cursor-not-allowed', this.page >= totalPages);
+            }
+
+            updateSelectedAccountCount();
+        },
+
+        next() {
+            if (this.page < this.totalPages()) {
+                this.page++;
+                this.apply();
+            }
+        },
+
+        prev() {
+            if (this.page > 1) {
+                this.page--;
+                this.apply();
+            }
+        },
+
+        changePageSize() {
+            const select = document.getElementById('accountPageSize');
+            this.pageSize = parseInt(select?.value || '20', 10);
+            this.page = 1;
+            this.apply();
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+        accountPagination.changePageSize();
+        updateSelectedAccountCount();
     });
-}
 </script>
 
 @endsection

@@ -548,6 +548,18 @@ Route::prefix('developers')
         Route::post('/cpanel-sync', [DeveloperCpanelImportController::class, 'sync'])
             ->name('cpanel.sync');
 
+        Route::post('/developers/{developer}/toggle', [DeveloperCpanelImportController::class, 'toggle'])
+        ->name('developers.toggle');
+
+        Route::post('/developers/{developer}/portal-access', [DeveloperCpanelImportController::class, 'portalAccess'])
+            ->name('developers.portal-access');
+
+        Route::post('/developers/{developer}/portal-enable', [DeveloperCpanelImportController::class, 'enablePortal'])
+            ->name('developers.portal-enable');
+
+        Route::post('/developers/{developer}/portal-disable', [DeveloperCpanelImportController::class, 'disablePortal'])
+            ->name('developers.portal-disable');
+
         Route::post('/cpanel-login-import', [DeveloperCpanelImportController::class, 'importSingleCpanelLogin'])
             ->name('cpanel.login.import');
 

@@ -21,24 +21,67 @@ class DeveloperAuthController extends Controller
     public function login(Request $request)
     {
         $data = $request->validate([
-            'login' => ['required', 'string'],
+            'login'    => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ]);
 
         $login = trim($data['login']);
+        $password = $data['password'];
 
-        $developer = DeveloperUser::where('email', $login)
-            ->orWhere('contact_email', $login)
-            ->orWhere('cpanel_username', $login)
+        $developer = DeveloperUser::where(function ($query) use ($login) {
+                $query->where('email', $login)
+                    ->orWhere('contact_email', $login)
+                    ->orWhere('cpanel_username', $login)
+                    ->orWhere('username', $login);
+            })
             ->first();
 
-        if (!$developer || !$developer->is_active) {
+        if (!$developer) {
             return back()
                 ->withInput($request->only('login'))
-                ->with('error', 'Developer account is disabled or not found.');
+                ->with('error', 'Developer account not found.');
         }
 
-        if (!Hash::check($data['password'], $developer->password)) {
+        if (!$developer->is_active) {
+            return back()
+                ->withInput($request->only('login'))
+                ->with('error', 'Developer account is disabled.');
+        }
+
+        $storedPassword = $developer->password;
+        $passwordMatched = false;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Check hashed password
+        |--------------------------------------------------------------------------
+        | Normal Laravel password should be saved using Hash::make().
+        */
+        if (!empty($storedPassword)) {
+            try {
+                if (Hash::check($password, $storedPassword)) {
+                    $passwordMatched = true;
+                }
+            } catch (\Throwable $e) {
+                $passwordMatched = false;
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Temporary legacy plain password support
+        |--------------------------------------------------------------------------
+        | If old records have plain password, allow login once and convert to hash.
+        | After this, password will be stored safely as hashed password.
+        */
+        if (!$passwordMatched && !empty($storedPassword) && hash_equals($storedPassword, $password)) {
+            $passwordMatched = true;
+
+            $developer->password = Hash::make($password);
+            $developer->save();
+        }
+
+        if (!$passwordMatched) {
             return back()
                 ->withInput($request->only('login'))
                 ->with('error', 'Invalid developer login details.');
