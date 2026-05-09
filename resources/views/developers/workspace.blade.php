@@ -1,13 +1,19 @@
 @extends('layouts.developer')
 
-@section('title', 'Developer Workspace')
+@section('title', $pageTitle ?? 'Developer Workspace')
 
 @section('developer-content')
 
 @php
     use Illuminate\Support\Facades\Route;
+    use Illuminate\Support\Str;
 
     $developer = auth()->guard('developer')->user();
+
+    $pageTitle = $pageTitle ?? 'Developer Codes Workspace';
+    $pageDescription = $pageDescription ?? 'Secure developer portal for project access, browser VS Code, approved commands, Git tools, database access, and safe workspace permissions.';
+    $pageIcon = $pageIcon ?? 'fa-solid fa-layer-group';
+    $activeDeveloperPage = $activeDeveloperPage ?? 'overview';
 
     $developerName = $developer->name
         ?? $developer->cpanel_username
@@ -31,9 +37,16 @@
     $framework = $developer->framework
         ?? 'custom';
 
-    $projectRoot = $developer->project_root
+    $projectRoot = $projectRoot
+        ?? $developer->project_root
         ?? $developer->allowed_project_path
-        ?? '/home/project/public_html';
+        ?? null;
+
+    if (!$projectRoot) {
+        $projectRoot = '/home/' . ($developer->cpanel_username ?? $developer->ssh_username ?? 'developer') . '/public_html';
+    }
+
+    $projectRoot = rtrim($projectRoot, '/');
 
     $publicPath = str_contains($projectRoot, '/public_html')
         ? $projectRoot
@@ -59,17 +72,64 @@
 
     /*
     |--------------------------------------------------------------------------
-    | Code Editor URL
+    | Public Code Editor Route
     |--------------------------------------------------------------------------
-    | This opens:
+    | This is what every developer opens:
     | https://developercodes.webscepts.com/codeditor
-    |
-    | If route is not cached/added yet, fallback keeps page from breaking.
     |--------------------------------------------------------------------------
     */
+
     $codeEditorUrl = Route::has('developer.domain.codeditor')
         ? route('developer.domain.codeditor')
         : url('/codeditor');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backend Code Editor URL
+    |--------------------------------------------------------------------------
+    | This is different for every developer account.
+    | Main source:
+    | developer_users.code_editor_url
+    |
+    | Fallback:
+    | developer_users.vscode_url
+    |
+    | Auto fallback:
+    | https://code-{cpanel_username}.webscepts.com
+    |--------------------------------------------------------------------------
+    */
+
+    $editorBackendUrl = $editorBackendUrl
+        ?? $developer->code_editor_url
+        ?? $developer->vscode_url
+        ?? null;
+
+    if (!$editorBackendUrl && !empty($developer->cpanel_username)) {
+        $editorBackendUrl = 'https://code-' . strtolower($developer->cpanel_username) . '.webscepts.com';
+    }
+
+    if (!$editorBackendUrl && !empty($developer->ssh_username)) {
+        $editorBackendUrl = 'https://code-' . strtolower($developer->ssh_username) . '.webscepts.com';
+    }
+
+    if (!$editorBackendUrl && !empty($developer->cpanel_domain)) {
+        $safeDomain = strtolower($developer->cpanel_domain);
+        $safeDomain = preg_replace('#^https?://#', '', $safeDomain);
+        $safeDomain = preg_replace('#/.*$#', '', $safeDomain);
+        $safeDomain = str_replace([':', '_'], '-', $safeDomain);
+
+        $editorBackendUrl = 'https://code-' . $safeDomain;
+    }
+
+    if (!$editorBackendUrl) {
+        $editorBackendUrl = config('services.vscode.url') ?: env('VSCODE_WEB_URL');
+    }
+
+    if ($editorBackendUrl && !Str::startsWith($editorBackendUrl, ['http://', 'https://'])) {
+        $editorBackendUrl = 'https://' . $editorBackendUrl;
+    }
+
+    $editorBackendUrl = $editorBackendUrl ? rtrim($editorBackendUrl, '/') : null;
 
     $permissions = [
         [
@@ -90,7 +150,7 @@
         [
             'label' => 'NPM Build',
             'allowed' => $canNpm || $canRunBuild,
-            'icon' => 'fa-solid fa-cube',
+            'icon' => 'fa-brands fa-node-js',
         ],
         [
             'label' => 'Python',
@@ -126,6 +186,51 @@
             'label' => 'PostgreSQL',
             'allowed' => $canPostgresql,
             'icon' => 'fa-solid fa-server',
+        ],
+    ];
+
+    $toolCards = [
+        [
+            'title' => 'Web VS Code',
+            'description' => 'Open browser Visual Studio Code through the protected Developer Codes route.',
+            'icon' => 'fa-solid fa-code',
+            'color' => 'blue',
+            'enabled' => $canViewFiles,
+        ],
+        [
+            'title' => 'Project Files',
+            'description' => 'View assigned project path and safe file access information.',
+            'icon' => 'fa-solid fa-folder-tree',
+            'color' => 'green',
+            'enabled' => $canViewFiles,
+        ],
+        [
+            'title' => 'Git Tools',
+            'description' => 'Run approved Git actions such as Git Pull when permission is enabled.',
+            'icon' => 'fa-solid fa-code-branch',
+            'color' => 'emerald',
+            'enabled' => $canGitPull,
+        ],
+        [
+            'title' => 'Laravel Tools',
+            'description' => 'Clear cache, optimize config, and run composer tools for Laravel/PHP projects.',
+            'icon' => 'fa-brands fa-laravel',
+            'color' => 'red',
+            'enabled' => $canClearCache || $canComposer,
+        ],
+        [
+            'title' => 'Frontend Build',
+            'description' => 'React, Vue, Angular, Next.js, Nuxt, Svelte and Node build commands.',
+            'icon' => 'fa-brands fa-react',
+            'color' => 'cyan',
+            'enabled' => $canNpm || $canRunBuild,
+        ],
+        [
+            'title' => 'Database Access',
+            'description' => 'Assigned MySQL and PostgreSQL connection information.',
+            'icon' => 'fa-solid fa-database',
+            'color' => 'purple',
+            'enabled' => $canMysql || $canPostgresql,
         ],
     ];
 @endphp
@@ -187,12 +292,11 @@
                 </div>
 
                 <h1 class="mt-5 text-4xl lg:text-6xl font-black tracking-tight">
-                    Developer Codes Workspace
+                    {{ $pageTitle }}
                 </h1>
 
                 <p class="mt-4 text-slate-300 max-w-4xl text-lg">
-                    Secure developer portal for project access, browser VS Code, approved commands,
-                    Git tools, database access, and safe workspace permissions.
+                    {{ $pageDescription }}
                 </p>
 
                 <div class="mt-6 flex flex-wrap gap-2">
@@ -220,12 +324,21 @@
 
             {{-- Quick Actions --}}
             <div class="space-y-3">
-                <a href="{{ $codeEditorUrl }}"
-                   target="_blank"
-                   class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black transition shadow-lg shadow-blue-950/20">
-                    <i class="fa-solid fa-code"></i>
-                    Open Web VS Code
-                </a>
+                @if($canViewFiles)
+                    <a href="{{ $codeEditorUrl }}"
+                       target="_blank"
+                       class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black transition shadow-lg shadow-blue-950/20">
+                        <i class="fa-solid fa-code"></i>
+                        Open Web VS Code
+                    </a>
+                @else
+                    <button type="button"
+                            disabled
+                            class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-slate-500 text-white font-black opacity-60 cursor-not-allowed">
+                        <i class="fa-solid fa-lock"></i>
+                        Web VS Code Disabled
+                    </button>
+                @endif
 
                 @if($canGitPull && Route::has('developer.domain.git.pull'))
                     <form method="POST" action="{{ route('developer.domain.git.pull') }}">
@@ -261,7 +374,7 @@
                     <form method="POST" action="{{ route('developer.domain.npm.build') }}">
                         @csrf
                         <button class="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black transition">
-                            <i class="fa-solid fa-cube"></i>
+                            <i class="fa-brands fa-node-js"></i>
                             NPM Build
                         </button>
                     </form>
@@ -280,7 +393,7 @@
         </div>
     </section>
 
-    {{-- Stats --}}
+    {{-- Main Stats --}}
     <section id="project-section" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
             <div class="flex items-center justify-between gap-4">
@@ -339,50 +452,80 @@
             <div>
                 <h2 class="text-2xl font-black text-slate-900">Web Visual Studio Code</h2>
                 <p class="text-slate-500 mt-1">
-                    Open your browser code editor through Developer Codes.
+                    Developer opens the secure public route. Backend editor URL is loaded from this developer account.
                 </p>
             </div>
 
-            <a href="{{ $codeEditorUrl }}"
-               target="_blank"
-               class="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black">
-                <i class="fa-solid fa-up-right-from-square mr-2"></i>
-                Open Editor
-            </a>
+            @if($canViewFiles)
+                <a href="{{ $codeEditorUrl }}"
+                   target="_blank"
+                   class="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black">
+                    <i class="fa-solid fa-up-right-from-square mr-2"></i>
+                    Open Editor
+                </a>
+            @else
+                <button type="button"
+                        disabled
+                        class="px-6 py-3 rounded-2xl bg-slate-400 text-white font-black cursor-not-allowed opacity-70">
+                    <i class="fa-solid fa-lock mr-2"></i>
+                    Editor Disabled
+                </button>
+            @endif
         </div>
 
         <div class="p-6 grid grid-cols-1 xl:grid-cols-3 gap-5">
-            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-5">
+            <div class="rounded-2xl bg-blue-50 border border-blue-200 p-5">
                 <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mb-4">
                     <i class="fa-solid fa-code"></i>
                 </div>
-                <h3 class="font-black text-slate-900">Browser VS Code</h3>
-                <p class="text-sm text-slate-500 mt-2">
-                    Editor opens using:
-                    <span class="font-black text-slate-700">https://developercodes.webscepts.com/codeditor</span>
-                </p>
-            </div>
-
-            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-5">
-                <div class="w-12 h-12 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center mb-4">
-                    <i class="fa-solid fa-folder-lock"></i>
-                </div>
-                <h3 class="font-black text-slate-900">Restricted Path</h3>
+                <h3 class="font-black text-slate-900">Public Editor Route</h3>
                 <p class="text-sm text-slate-500 mt-2 break-all">
-                    Workspace should open only: {{ $projectRoot }}
+                    {{ $codeEditorUrl }}
                 </p>
             </div>
 
-            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-5">
+            <div class="rounded-2xl bg-green-50 border border-green-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+                <h3 class="font-black text-slate-900">Backend Editor URL</h3>
+                <p class="text-sm text-slate-500 mt-2 break-all">
+                    {{ $editorBackendUrl ?: 'Not configured' }}
+                </p>
+            </div>
+
+            <div class="rounded-2xl bg-purple-50 border border-purple-200 p-5">
                 <div class="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center mb-4">
                     <i class="fa-solid fa-shield-halved"></i>
                 </div>
-                <h3 class="font-black text-slate-900">Secure Access</h3>
+                <h3 class="font-black text-slate-900">Protected Access</h3>
                 <p class="text-sm text-slate-500 mt-2">
-                    Code editor route is protected by developer login.
+                    Code editor route is protected by developer login and file-access permission.
                 </p>
             </div>
         </div>
+    </section>
+
+    {{-- Tool Cards --}}
+    <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        @foreach($toolCards as $tool)
+            <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <div class="w-14 h-14 rounded-2xl bg-{{ $tool['color'] }}-100 text-{{ $tool['color'] }}-700 flex items-center justify-center mb-4">
+                            <i class="{{ $tool['icon'] }} text-xl"></i>
+                        </div>
+
+                        <h3 class="text-xl font-black text-slate-900">{{ $tool['title'] }}</h3>
+                        <p class="text-sm text-slate-500 mt-2">{{ $tool['description'] }}</p>
+                    </div>
+
+                    <span class="px-3 py-1 rounded-full text-xs font-black {{ $tool['enabled'] ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                        {{ $tool['enabled'] ? 'ON' : 'OFF' }}
+                    </span>
+                </div>
+            </div>
+        @endforeach
     </section>
 
     {{-- Account + Permissions --}}
@@ -398,7 +541,7 @@
 
                 <div class="flex justify-between gap-4">
                     <span class="font-bold text-slate-500">Email</span>
-                    <span class="font-black text-slate-900 text-right">{{ $developerEmail }}</span>
+                    <span class="font-black text-slate-900 text-right break-all">{{ $developerEmail }}</span>
                 </div>
 
                 <div class="flex justify-between gap-4">
@@ -452,8 +595,8 @@
     </section>
 
     {{-- Git + Database --}}
-    <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div id="git-section" class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+    <section id="git-section" class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
             <h2 class="text-2xl font-black text-slate-900">Git & Project Commands</h2>
 
             <div class="mt-5 space-y-3">
@@ -495,10 +638,17 @@
                     <form method="POST" action="{{ route('developer.domain.npm.build') }}">
                         @csrf
                         <button class="w-full px-5 py-4 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black">
-                            <i class="fa-solid fa-cube mr-2"></i>
+                            <i class="fa-brands fa-node-js mr-2"></i>
                             NPM Build
                         </button>
                     </form>
+                @endif
+
+                @if(session('command_output'))
+                    <div class="rounded-2xl bg-slate-950 text-slate-100 p-5 mt-4 overflow-x-auto">
+                        <div class="font-black text-green-400 mb-3">Command Output</div>
+                        <pre class="text-xs whitespace-pre-wrap">{{ session('command_output') }}</pre>
+                    </div>
                 @endif
             </div>
         </div>
@@ -556,6 +706,113 @@
                     <span class="font-bold text-slate-500">DB Name</span>
                     <span class="font-black text-slate-900">{{ $developer->db_name ?? '-' }}</span>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    {{-- Extra Developer Tool Sections --}}
+    <section id="env-section" class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <h2 class="text-2xl font-black text-slate-900">ENV Manager</h2>
+        <p class="text-slate-500 mt-1">Safe environment configuration notes and example file tools.</p>
+
+        <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-2xl bg-yellow-50 border border-yellow-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-yellow-100 text-yellow-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-file-code"></i>
+                </div>
+                <h3 class="font-black text-slate-900">.env Example</h3>
+                <p class="text-sm text-slate-500 mt-2">Download or review safe environment examples.</p>
+
+                @if(Route::has('developer.domain.env.example'))
+                    <a href="{{ route('developer.domain.env.example') }}"
+                       class="inline-flex mt-4 px-4 py-2 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-black text-sm">
+                        Download Example
+                    </a>
+                @endif
+            </div>
+
+            <div class="rounded-2xl bg-blue-50 border border-blue-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-key"></i>
+                </div>
+                <h3 class="font-black text-slate-900">Secret Protection</h3>
+                <p class="text-sm text-slate-500 mt-2">Never expose database passwords, API keys or app secrets.</p>
+            </div>
+
+            <div class="rounded-2xl bg-green-50 border border-green-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-check-circle"></i>
+                </div>
+                <h3 class="font-black text-slate-900">Configuration Check</h3>
+                <p class="text-sm text-slate-500 mt-2">Check framework environment requirements before deployment.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="logs-section" class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <h2 class="text-2xl font-black text-slate-900">Error Logs</h2>
+        <p class="text-slate-500 mt-1">Developer-friendly log access area for safe debugging.</p>
+
+        <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-2xl bg-red-50 border border-red-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-bug"></i>
+                </div>
+                <h3 class="font-black text-red-700">Laravel Logs</h3>
+                <p class="text-sm text-red-600 mt-2">View app errors and exception traces safely.</p>
+            </div>
+
+            <div class="rounded-2xl bg-orange-50 border border-orange-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-server"></i>
+                </div>
+                <h3 class="font-black text-orange-700">Server Logs</h3>
+                <p class="text-sm text-orange-600 mt-2">Monitor server-level errors and runtime warnings.</p>
+            </div>
+
+            <div class="rounded-2xl bg-blue-50 border border-blue-200 p-5">
+                <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-globe"></i>
+                </div>
+                <h3 class="font-black text-blue-700">Access Logs</h3>
+                <p class="text-sm text-blue-600 mt-2">Review safe request logs and route activity.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="terminal-section" class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <h2 class="text-2xl font-black text-slate-900">Safe Terminal</h2>
+        <p class="text-slate-500 mt-1">Only approved commands are available for developers.</p>
+
+        <div class="mt-5 rounded-2xl bg-slate-950 text-slate-200 p-5 font-mono text-sm overflow-x-auto">
+            <div class="text-green-400">developer@workspace:~$</div>
+            <div class="mt-2">Allowed commands: git pull, composer dump-autoload, npm build, cache clear</div>
+            <div class="mt-2 text-slate-500">Direct unrestricted shell access should stay disabled.</div>
+        </div>
+    </section>
+
+    <section id="health-section" class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <h2 class="text-2xl font-black text-slate-900">Health Check</h2>
+
+        <div class="mt-5 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="rounded-2xl bg-green-50 border border-green-200 p-5">
+                <h3 class="font-black text-green-700">Website</h3>
+                <p class="text-sm text-green-600 mt-2">Check public site status.</p>
+            </div>
+
+            <div class="rounded-2xl bg-blue-50 border border-blue-200 p-5">
+                <h3 class="font-black text-blue-700">SSL</h3>
+                <p class="text-sm text-blue-600 mt-2">Check HTTPS certificate.</p>
+            </div>
+
+            <div class="rounded-2xl bg-purple-50 border border-purple-200 p-5">
+                <h3 class="font-black text-purple-700">Disk</h3>
+                <p class="text-sm text-purple-600 mt-2">Monitor storage usage.</p>
+            </div>
+
+            <div class="rounded-2xl bg-orange-50 border border-orange-200 p-5">
+                <h3 class="font-black text-orange-700">Performance</h3>
+                <p class="text-sm text-orange-600 mt-2">Check load and response time.</p>
             </div>
         </div>
     </section>
