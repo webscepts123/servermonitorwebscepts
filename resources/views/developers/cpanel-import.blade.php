@@ -43,6 +43,7 @@
 
     $syncRoute = Route::has('developers.cpanel.sync') ? route('developers.cpanel.sync') : '#';
     $bulkImportRoute = Route::has('developers.cpanel.bulk.import') ? route('developers.cpanel.bulk.import') : '#';
+    $setupExistingRoute = Route::has('developers.code-editor.setup-existing') ? route('developers.code-editor.setup-existing') : '#';
 
     $portalIsActive = function ($developer) {
         return (bool) (
@@ -69,7 +70,11 @@
     $editorUrlForUser = function ($username, $domain = null, $account = []) use ($autoEditorUrlForUser) {
         $existing = $account['code_editor_url'] ?? $account['vscode_url'] ?? null;
 
-        if ($existing && !str_contains($existing, 'developercodes.webscepts.com/codeditor')) {
+        if (
+            $existing &&
+            !str_contains($existing, 'developercodes.webscepts.com/codeditor') &&
+            !str_ends_with(rtrim($existing, '/'), '/codeditor')
+        ) {
             return $existing;
         }
 
@@ -316,6 +321,33 @@
         </div>
     @endif
 
+    {{-- Setup Existing Log --}}
+    @if(session('code_editor_setup_log'))
+        <div class="rounded-3xl bg-slate-950 text-white p-6 shadow-xl overflow-hidden relative">
+            <div class="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-purple-500/20 blur-3xl"></div>
+
+            <div class="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div>
+                    <h2 class="text-2xl font-black">Existing VS Code Setup Log</h2>
+                    <p class="text-slate-300 mt-1">
+                        Results from provisioning existing developer accounts.
+                    </p>
+                </div>
+
+                <button type="button"
+                        onclick="copyText('setupLogBox')"
+                        class="px-5 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black">
+                    <i class="fa-solid fa-copy mr-2"></i>
+                    Copy Log
+                </button>
+            </div>
+
+            <pre id="setupLogBox" class="relative mt-5 bg-black/40 border border-white/10 rounded-2xl p-5 overflow-auto text-xs whitespace-pre-wrap">@foreach(session('code_editor_setup_log') as $log)
+{{ $log }}
+@endforeach</pre>
+        </div>
+    @endif
+
     {{-- Created Passwords --}}
     @if(session('created_logins'))
         <div class="rounded-3xl bg-slate-950 text-white p-6 shadow-xl overflow-hidden relative">
@@ -385,7 +417,8 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
                     Fetch cPanel accounts, choose framework and permissions, then Developer Codes automatically creates
-                    <b>code-username.{{ $codeEditorBaseDomain }}</b>, installs Let’s Encrypt SSL, and saves the backend URL.
+                    <b>code-username.{{ $codeEditorBaseDomain }}</b>, installs Let’s Encrypt SSL, configures proxy, starts code-server,
+                    and saves the backend URL.
                 </p>
 
                 <div class="mt-5 flex flex-wrap gap-2">
@@ -402,7 +435,7 @@ Password: {{ $login['password'] ?? '-' }}
                     </span>
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
-                        Loaded Accounts: {{ $cpanelAccounts->count() }}
+                        Developer Users: {{ $developerCount }}
                     </span>
                 </div>
             </div>
@@ -414,6 +447,20 @@ Password: {{ $login['password'] ?? '-' }}
                     <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>
                     Open Developer Portal
                 </a>
+
+                @if(Route::has('developers.code-editor.setup-existing'))
+                    <form method="POST"
+                          action="{{ $setupExistingRoute }}"
+                          onsubmit="return confirm('Provision VS Code + SSL for all existing developer accounts? This can take time.');">
+                        @csrf
+
+                        <button type="submit"
+                                class="w-full px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-center">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>
+                            Setup All Existing VS Code + SSL
+                        </button>
+                    </form>
+                @endif
 
                 <button type="button"
                         onclick="document.getElementById('fetchUsersCard').scrollIntoView({behavior: 'smooth'});"
@@ -521,9 +568,8 @@ Password: {{ $login['password'] ?? '-' }}
                         Auto VS Code setup
                     </p>
                     <p class="text-sm text-blue-700 font-bold mt-1">
-                        When selected developer accounts are created or updated, the system will auto-create
-                        <b>code-username.{{ $codeEditorBaseDomain }}</b>, install Nginx reverse proxy, run Let’s Encrypt SSL,
-                        start code-server, and save the backend URL. No manual domain entry needed.
+                        New selected accounts are provisioned automatically. Existing accounts can be provisioned one by one
+                        using <b>Setup VS Code + SSL</b>, or all together using <b>Setup All Existing VS Code + SSL</b>.
                     </p>
                 </div>
             </div>
@@ -543,7 +589,7 @@ Password: {{ $login['password'] ?? '-' }}
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
                             Select accounts and configure framework, portal access, permissions and database.
-                            Code editor backend domain and SSL will be created automatically.
+                            VS Code backend domain, proxy and SSL will be created automatically.
                         </p>
                     </div>
 
@@ -590,7 +636,7 @@ Password: {{ $login['password'] ?? '-' }}
                             Showing: <span id="accountShowingCount">0</span>
                         </span>
                         <span class="px-3 py-2 rounded-full bg-cyan-100 text-cyan-700">
-                            Auto SSL enabled
+                            Auto VS Code SSL enabled
                         </span>
                     </div>
 
@@ -890,7 +936,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div class="p-6 border-t bg-slate-50 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div class="text-sm text-slate-500 font-bold">
-                        Selected users will be created/updated. Developer Codes will automatically create DNS, install SSL and setup VS Code backend.
+                        Selected users will be created/updated. Developer Codes will automatically create DNS, install SSL, setup proxy and start VS Code backend.
                     </div>
 
                     <button class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
@@ -919,15 +965,31 @@ Password: {{ $login['password'] ?? '-' }}
             <div>
                 <h2 class="text-2xl font-black text-slate-900">Developer Portal Users</h2>
                 <p class="text-slate-500 mt-1">
-                    Existing Developer Codes users. Save permissions here, and press Setup VS Code + SSL if backend domain or SSL is missing.
+                    Existing Developer Codes users. Save permissions here, and press Setup VS Code + SSL if backend domain, proxy or SSL is missing.
                 </p>
             </div>
 
-            <input type="text"
-                   id="developerSearch"
-                   oninput="filterRows('developerSearch', '.developer-row')"
-                   placeholder="Search developers, framework, domain, editor URL..."
-                   class="w-full xl:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+            <div class="flex flex-col md:flex-row gap-3 w-full xl:w-auto">
+                <input type="text"
+                       id="developerSearch"
+                       oninput="filterRows('developerSearch', '.developer-row')"
+                       placeholder="Search developers, framework, domain, editor URL..."
+                       class="w-full xl:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
+
+                @if(Route::has('developers.code-editor.setup-existing'))
+                    <form method="POST"
+                          action="{{ $setupExistingRoute }}"
+                          onsubmit="return confirm('Provision VS Code + SSL for all existing developer accounts?');">
+                        @csrf
+
+                        <button type="submit"
+                                class="w-full md:w-auto px-5 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>
+                            Setup Existing
+                        </button>
+                    </form>
+                @endif
+            </div>
         </div>
 
         <div class="p-5 grid grid-cols-1 gap-5">
@@ -943,12 +1005,17 @@ Password: {{ $login['password'] ?? '-' }}
 
                     $fallbackDeveloperEditorUrl = $developerEditorUrl;
 
-                    if (!$fallbackDeveloperEditorUrl || str_contains($fallbackDeveloperEditorUrl, 'developercodes.webscepts.com/codeditor')) {
+                    if (
+                        !$fallbackDeveloperEditorUrl ||
+                        str_contains($fallbackDeveloperEditorUrl, 'developercodes.webscepts.com/codeditor') ||
+                        str_ends_with(rtrim($fallbackDeveloperEditorUrl, '/'), '/codeditor')
+                    ) {
                         $fallbackDeveloperEditorUrl = $autoDeveloperEditorUrl;
                     }
 
                     $needsSetup = empty($developerEditorUrl)
-                        || str_contains((string) $developerEditorUrl, 'developercodes.webscepts.com/codeditor');
+                        || str_contains((string) $developerEditorUrl, 'developercodes.webscepts.com/codeditor')
+                        || str_ends_with(rtrim((string) $developerEditorUrl, '/'), '/codeditor');
 
                     $developerSearchText = strtolower(
                         ($developer->name ?? '') . ' ' .
@@ -989,7 +1056,7 @@ Password: {{ $login['password'] ?? '-' }}
                                     @if($needsSetup)
                                         <span class="mini-pill pill-red">
                                             <i class="fa-solid fa-triangle-exclamation"></i>
-                                            VS Code SSL needs setup
+                                            VS Code needs setup
                                         </span>
                                     @else
                                         <span class="mini-pill pill-green">
@@ -1071,7 +1138,7 @@ Password: {{ $login['password'] ?? '-' }}
                                         <div class="flex flex-wrap gap-2 mt-3">
                                             <span class="mini-pill pill-blue">
                                                 <i class="fa-solid fa-globe"></i>
-                                                DNS auto by CloudNS
+                                                DNS by CloudNS
                                             </span>
                                             <span class="mini-pill pill-green">
                                                 <i class="fa-solid fa-lock"></i>
@@ -1108,11 +1175,11 @@ Password: {{ $login['password'] ?? '-' }}
 
                                         @if($needsSetup)
                                             <div class="mt-3 rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-bold text-red-700">
-                                                SSL or backend URL is not ready. Press <b>Setup VS Code + SSL</b> below.
+                                                Backend/SSL/proxy may not be ready. Press <b>Setup VS Code + SSL</b>.
                                             </div>
                                         @else
                                             <div class="mt-3 rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-bold text-green-700">
-                                                Backend URL saved. Press setup again only if DNS/SSL/code-server is missing or broken.
+                                                Backend URL saved. Press setup again if VS Code is not showing.
                                             </div>
                                         @endif
                                     </div>
@@ -1214,7 +1281,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                     <div class="p-5 border-t bg-slate-50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                         <div class="text-sm text-slate-500 font-bold">
-                            Save permissions separately. Use Setup VS Code + SSL to create DNS, Nginx, code-server and Let’s Encrypt SSL.
+                            Save permissions separately. Use Setup VS Code + SSL to create/repair DNS, proxy, code-server and SSL.
                         </div>
 
                         <div class="flex flex-wrap justify-end gap-2">
@@ -1228,7 +1295,7 @@ Password: {{ $login['password'] ?? '-' }}
                             @if(Route::has('developers.code-editor.setup'))
                                 <form method="POST"
                                       action="{{ $setupRoute }}"
-                                      onsubmit="return confirm('Setup DNS, Nginx, code-server and Let\\'s Encrypt SSL for this developer?');">
+                                      onsubmit="return confirm('Setup or repair DNS, proxy, code-server and Let\\'s Encrypt SSL for this developer?');">
                                     @csrf
 
                                     <button type="submit"

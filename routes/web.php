@@ -85,8 +85,6 @@ Route::domain('developercodes.webscepts.com')
             |--------------------------------------------------------------------------
             | Main route:
             | https://developercodes.webscepts.com/codeditor
-            |
-            | Extra aliases are added to prevent 404 from typing mistakes.
             |--------------------------------------------------------------------------
             */
 
@@ -617,12 +615,21 @@ Route::middleware(['auth'])->group(function () {
     |--------------------------------------------------------------------------
     | Admin Developer Management Routes
     |--------------------------------------------------------------------------
+    | Admin panel:
+    | https://systemmonitor.webscepts.com/developers/cpanel-import
+    |--------------------------------------------------------------------------
     */
 
     Route::prefix('developers')
         ->name('developers.')
         ->middleware(['throttle:30,1'])
         ->group(function () {
+
+            /*
+            |--------------------------------------------------------------------------
+            | Admin Developer Workspace Tools
+            |--------------------------------------------------------------------------
+            */
 
             Route::get('/workspace', [DeveloperWorkspaceController::class, 'index'])
                 ->name('workspace');
@@ -645,6 +652,12 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/env-example', [DeveloperWorkspaceController::class, 'downloadEnvExample'])
                 ->name('env.example');
 
+            /*
+            |--------------------------------------------------------------------------
+            | cPanel Developer Import
+            |--------------------------------------------------------------------------
+            */
+
             Route::get('/cpanel-import', [DeveloperCpanelImportController::class, 'index'])
                 ->name('cpanel.import');
 
@@ -656,6 +669,33 @@ Route::middleware(['auth'])->group(function () {
 
             Route::post('/cpanel-bulk-import', [DeveloperCpanelImportController::class, 'bulkImport'])
                 ->name('cpanel.bulk.import');
+
+            /*
+            |--------------------------------------------------------------------------
+            | VS Code / Code Server Auto Provisioning
+            |--------------------------------------------------------------------------
+            | Existing single account:
+            | POST /developers/{developer}/code-editor/setup
+            |
+            | All existing accounts:
+            | POST /developers/code-editor/setup-existing
+            |--------------------------------------------------------------------------
+            */
+
+            Route::post('/code-editor/setup-existing', [DeveloperCpanelImportController::class, 'setupAllExistingCodeEditors'])
+                ->name('code-editor.setup-existing');
+
+            Route::post('/{developer}/code-editor/setup', [DeveloperCpanelImportController::class, 'setupCodeEditor'])
+                ->name('code-editor.setup');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Existing Developer Settings
+            |--------------------------------------------------------------------------
+            */
+
+            Route::put('/{developer}/settings', [DeveloperCpanelImportController::class, 'updateSettings'])
+                ->name('settings.update');
 
             Route::post('/{developer}/reset-password', [DeveloperCpanelImportController::class, 'resetPassword'])
                 ->name('reset-password');
@@ -671,12 +711,6 @@ Route::middleware(['auth'])->group(function () {
 
             Route::post('/{developer}/portal-disable', [DeveloperCpanelImportController::class, 'disablePortal'])
                 ->name('portal-disable');
-
-            Route::put('/{developer}/settings', [DeveloperCpanelImportController::class, 'updateSettings'])
-            ->name('settings.update');
-
-            Route::post('/developers/{developer}/code-editor/setup', [DeveloperCpanelImportController::class, 'setupCodeEditor'])
-            ->name('developers.code-editor.setup');
 
             Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
                 ->name('destroy');
