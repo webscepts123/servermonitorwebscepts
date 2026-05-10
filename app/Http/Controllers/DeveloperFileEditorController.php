@@ -36,11 +36,17 @@ class DeveloperFileEditorController extends Controller
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
         }
 
         if (!$this->can($developer, 'can_view_files')) {
-            return response()->json(['ok' => false, 'message' => 'You do not have permission to view files.'], 403);
+            return response()->json([
+                'ok' => false,
+                'message' => 'You do not have permission to view files.',
+            ], 403);
         }
 
         try {
@@ -76,18 +82,27 @@ class DeveloperFileEditorController extends Controller
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
         }
 
         if (!$this->can($developer, 'can_view_files')) {
-            return response()->json(['ok' => false, 'message' => 'You do not have permission to read files.'], 403);
+            return response()->json([
+                'ok' => false,
+                'message' => 'You do not have permission to read files.',
+            ], 403);
         }
 
         try {
             $path = $this->safePath($developer, $request->input('path'));
 
             if ($this->isBlockedFile($path)) {
-                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be opened.'], 403);
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'This file is protected and cannot be opened.',
+                ], 403);
             }
 
             [$dir, $file] = $this->splitPath($path);
@@ -133,11 +148,17 @@ class DeveloperFileEditorController extends Controller
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
         }
 
         if (!$this->can($developer, 'can_edit_files')) {
-            return response()->json(['ok' => false, 'message' => 'You do not have permission to save files.'], 403);
+            return response()->json([
+                'ok' => false,
+                'message' => 'You do not have permission to save files.',
+            ], 403);
         }
 
         try {
@@ -145,7 +166,10 @@ class DeveloperFileEditorController extends Controller
             $content = (string) $request->input('content', '');
 
             if ($this->isBlockedFile($path)) {
-                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be saved.'], 403);
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'This file is protected and cannot be saved.',
+                ], 403);
             }
 
             [$dir, $file] = $this->splitPath($path);
@@ -177,11 +201,17 @@ class DeveloperFileEditorController extends Controller
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
         }
 
         if (!$this->can($developer, 'can_edit_files')) {
-            return response()->json(['ok' => false, 'message' => 'You do not have permission to create files.'], 403);
+            return response()->json([
+                'ok' => false,
+                'message' => 'You do not have permission to create files.',
+            ], 403);
         }
 
         try {
@@ -193,13 +223,19 @@ class DeveloperFileEditorController extends Controller
             $name = trim((string) $request->input('name'));
 
             if (!$name || str_contains($name, '/') || str_contains($name, '\\')) {
-                return response()->json(['ok' => false, 'message' => 'Invalid file name.'], 422);
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Invalid file name.',
+                ], 422);
             }
 
             $path = rtrim($dir, '/') . '/' . $name;
 
             if ($this->isBlockedFile($path)) {
-                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be created.'], 403);
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'This file is protected and cannot be created.',
+                ], 403);
             }
 
             $this->cpanelUapi($developer, 'Fileman', 'save_file_content', [
@@ -229,11 +265,17 @@ class DeveloperFileEditorController extends Controller
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
         }
 
         if (!$this->can($developer, 'can_edit_files')) {
-            return response()->json(['ok' => false, 'message' => 'You do not have permission to create folders.'], 403);
+            return response()->json([
+                'ok' => false,
+                'message' => 'You do not have permission to create folders.',
+            ], 403);
         }
 
         try {
@@ -245,7 +287,10 @@ class DeveloperFileEditorController extends Controller
             $name = trim((string) $request->input('name'));
 
             if (!$name || str_contains($name, '/') || str_contains($name, '\\')) {
-                return response()->json(['ok' => false, 'message' => 'Invalid folder name.'], 422);
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Invalid folder name.',
+                ], 422);
             }
 
             $path = rtrim($dir, '/') . '/' . $name;
@@ -273,18 +318,27 @@ class DeveloperFileEditorController extends Controller
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Unauthenticated.',
+            ], 401);
         }
 
         if (!$this->can($developer, 'can_delete_files')) {
-            return response()->json(['ok' => false, 'message' => 'You do not have permission to delete files.'], 403);
+            return response()->json([
+                'ok' => false,
+                'message' => 'You do not have permission to delete files.',
+            ], 403);
         }
 
         try {
             $path = $this->safePath($developer, $request->input('path'));
 
             if ($this->isBlockedFile($path)) {
-                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be deleted.'], 403);
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'This file is protected and cannot be deleted.',
+                ], 403);
             }
 
             $this->cpanelUapi($developer, 'Fileman', 'trash_files', [
@@ -314,36 +368,36 @@ class DeveloperFileEditorController extends Controller
 
     private function cpanelUapi(DeveloperUser $developer, string $module, string $function, array $params = []): array
     {
-        $server = $this->serverForDeveloper($developer);
-        $credentials = $this->serverCredentials($server);
-
-        $host = $this->cleanHost((string) ($credentials['host'] ?? ''));
-        $whmUsername = trim((string) ($credentials['username'] ?? 'root'));
-        $whmPassword = trim((string) ($credentials['password'] ?? ''));
-
-        $cpanelUser = trim((string) (
-            $developer->cpanel_username
-            ?: $developer->ssh_username
-            ?: ''
-        ));
-
-        if (!$host) {
-            throw new \Exception('WHM/cPanel host is missing on server record.');
-        }
+        $servers = $this->candidateServers($developer);
+        $cpanelUser = trim((string) ($developer->cpanel_username ?: $developer->ssh_username ?: ''));
 
         if (!$cpanelUser) {
             throw new \Exception('Developer cPanel username is missing.');
         }
 
-        $errors = [];
+        $allErrors = [];
 
-        /*
-        |--------------------------------------------------------------------------
-        | Method 1: WHM /json-api/cpanel
-        |--------------------------------------------------------------------------
-        */
+        foreach ($servers as $server) {
+            $credentials = $this->serverCredentials($server);
 
-        if ($whmUsername && $whmPassword) {
+            $host = $this->cleanHost((string) ($credentials['host'] ?? ''));
+            $whmUsername = trim((string) ($credentials['username'] ?? 'root'));
+            $whmPassword = trim((string) ($credentials['password'] ?? ''));
+            $whmToken = trim((string) ($credentials['token'] ?? ''));
+
+            if (!$host) {
+                $allErrors[] = 'Server #' . $server->id . ': WHM/cPanel host is missing.';
+                continue;
+            }
+
+            $serverLabel = ($server->name ?? 'Server') . ' #' . $server->id . ' (' . $host . ')';
+
+            /*
+            |--------------------------------------------------------------------------
+            | Method 1: WHM /json-api/cpanel with token/password.
+            |--------------------------------------------------------------------------
+            */
+
             try {
                 $query = array_merge([
                     'cpanel_jsonapi_user' => $cpanelUser,
@@ -352,17 +406,16 @@ class DeveloperFileEditorController extends Controller
                     'cpanel_jsonapi_func' => $function,
                 ], $params);
 
-                $response = Http::withoutVerifying()
-                    ->timeout(60)
-                    ->acceptJson()
-                    ->withOptions([
-                        'verify' => false,
-                        'connect_timeout' => 20,
-                    ])
-                    ->withBasicAuth($whmUsername, $whmPassword)
-                    ->get('https://' . $host . ':2087/json-api/cpanel', $query);
+                $response = $this->whmRequest(
+                    $host,
+                    $whmUsername,
+                    $whmPassword,
+                    $whmToken,
+                    'https://' . $host . ':2087/json-api/cpanel',
+                    $query
+                );
 
-                if ($response->successful()) {
+                if ($response && $response->successful()) {
                     $json = $response->json();
 
                     $result = data_get($json, 'cpanelresult.result')
@@ -375,40 +428,37 @@ class DeveloperFileEditorController extends Controller
                         return is_array($result) ? $result : [];
                     }
 
-                    $errors[] = 'WHM cPanel API denied';
+                    $allErrors[] = $serverLabel . ': WHM cPanel API denied.';
+                } elseif ($response) {
+                    $allErrors[] = $serverLabel . ': WHM cPanel API HTTP ' . $response->status();
                 } else {
-                    $errors[] = 'WHM cPanel API HTTP ' . $response->status();
+                    $allErrors[] = $serverLabel . ': WHM credentials missing.';
                 }
             } catch (\Throwable $e) {
-                $errors[] = 'WHM cPanel API exception: ' . $e->getMessage();
+                $allErrors[] = $serverLabel . ': WHM cPanel API exception - ' . $e->getMessage();
             }
-        } else {
-            $errors[] = 'WHM username/password missing.';
-        }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Method 2: WHM create_user_session
-        |--------------------------------------------------------------------------
-        */
+            /*
+            |--------------------------------------------------------------------------
+            | Method 2: WHM create_user_session.
+            |--------------------------------------------------------------------------
+            */
 
-        if ($whmUsername && $whmPassword) {
             try {
-                $sessionResponse = Http::withoutVerifying()
-                    ->timeout(60)
-                    ->acceptJson()
-                    ->withOptions([
-                        'verify' => false,
-                        'connect_timeout' => 20,
-                    ])
-                    ->withBasicAuth($whmUsername, $whmPassword)
-                    ->get('https://' . $host . ':2087/json-api/create_user_session', [
+                $sessionResponse = $this->whmRequest(
+                    $host,
+                    $whmUsername,
+                    $whmPassword,
+                    $whmToken,
+                    'https://' . $host . ':2087/json-api/create_user_session',
+                    [
                         'api.version' => 1,
                         'user' => $cpanelUser,
                         'service' => 'cpaneld',
-                    ]);
+                    ]
+                );
 
-                if ($sessionResponse->successful()) {
+                if ($sessionResponse && $sessionResponse->successful()) {
                     $sessionJson = $sessionResponse->json();
                     $sessionResult = data_get($sessionJson, 'metadata.result');
 
@@ -416,7 +466,6 @@ class DeveloperFileEditorController extends Controller
                         $sessionUrl = data_get($sessionJson, 'data.url');
 
                         if ($sessionUrl && preg_match('#/(cpsess[0-9]+)/#', $sessionUrl, $matches)) {
-                            $cpsess = $matches[1];
                             $cookieJar = new CookieJar();
 
                             Http::withoutVerifying()
@@ -431,7 +480,7 @@ class DeveloperFileEditorController extends Controller
 
                             return $this->callCpanelSessionUapi(
                                 $host,
-                                $cpsess,
+                                $matches[1],
                                 $cookieJar,
                                 $module,
                                 $function,
@@ -439,136 +488,205 @@ class DeveloperFileEditorController extends Controller
                             );
                         }
 
-                        $errors[] = 'Unable to extract cpsess token from WHM session URL.';
+                        $allErrors[] = $serverLabel . ': WHM session URL missing cpsess token.';
                     } else {
-                        $errors[] = 'WHM create_user_session denied';
+                        $allErrors[] = $serverLabel . ': WHM create_user_session denied.';
                     }
-                } else {
-                    $errors[] = 'WHM create_user_session HTTP ' . $sessionResponse->status();
+                } elseif ($sessionResponse) {
+                    $allErrors[] = $serverLabel . ': WHM create_user_session HTTP ' . $sessionResponse->status();
                 }
             } catch (\Throwable $e) {
-                $errors[] = 'WHM create_user_session exception: ' . $e->getMessage();
+                $allErrors[] = $serverLabel . ': WHM create_user_session exception - ' . $e->getMessage();
             }
-        }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Method 3: Direct cPanel Basic Auth
-        |--------------------------------------------------------------------------
-        */
+            /*
+            |--------------------------------------------------------------------------
+            | Method 3: Direct cPanel API token.
+            |--------------------------------------------------------------------------
+            */
 
-        $cpanelPassword = $this->developerCpanelPassword($developer);
+            $cpanelToken = $this->developerCpanelToken($developer);
 
-        if ($cpanelPassword) {
-            try {
-                $directUrl = 'https://' . $host . ':2083/execute/' . $module . '/' . $function;
+            if ($cpanelToken) {
+                try {
+                    $directTokenUrl = 'https://' . $host . ':2083/execute/' . $module . '/' . $function;
 
-                $directResponse = $this->cpanelRequest(
-                    Http::withoutVerifying()
+                    $tokenResponse = $this->cpanelRequest(
+                        Http::withoutVerifying()
+                            ->timeout(60)
+                            ->acceptJson()
+                            ->withOptions([
+                                'verify' => false,
+                                'connect_timeout' => 20,
+                            ])
+                            ->withHeaders([
+                                'Authorization' => 'cpanel ' . $cpanelUser . ':' . $cpanelToken,
+                            ]),
+                        $directTokenUrl,
+                        $params
+                    );
+
+                    if ($tokenResponse->successful()) {
+                        $tokenJson = $tokenResponse->json();
+
+                        if ((string) data_get($tokenJson, 'status') !== '0') {
+                            return [
+                                'status' => data_get($tokenJson, 'status', 1),
+                                'data' => data_get($tokenJson, 'data', []),
+                                'errors' => data_get($tokenJson, 'errors', []),
+                                'messages' => data_get($tokenJson, 'messages', []),
+                            ];
+                        }
+                    }
+
+                    $allErrors[] = $serverLabel . ': Direct cPanel API token failed HTTP ' . $tokenResponse->status();
+                } catch (\Throwable $e) {
+                    $allErrors[] = $serverLabel . ': Direct cPanel API token exception - ' . $e->getMessage();
+                }
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Method 4: Direct cPanel Basic Auth.
+            |--------------------------------------------------------------------------
+            */
+
+            $cpanelPassword = $this->developerCpanelPassword($developer);
+
+            if ($cpanelPassword) {
+                try {
+                    $directUrl = 'https://' . $host . ':2083/execute/' . $module . '/' . $function;
+
+                    $directResponse = $this->cpanelRequest(
+                        Http::withoutVerifying()
+                            ->timeout(60)
+                            ->acceptJson()
+                            ->withOptions([
+                                'verify' => false,
+                                'connect_timeout' => 20,
+                            ])
+                            ->withBasicAuth($cpanelUser, $cpanelPassword),
+                        $directUrl,
+                        $params
+                    );
+
+                    if ($directResponse->successful()) {
+                        $directJson = $directResponse->json();
+
+                        if ((string) data_get($directJson, 'status') !== '0') {
+                            return [
+                                'status' => data_get($directJson, 'status', 1),
+                                'data' => data_get($directJson, 'data', []),
+                                'errors' => data_get($directJson, 'errors', []),
+                                'messages' => data_get($directJson, 'messages', []),
+                            ];
+                        }
+                    }
+
+                    $allErrors[] = $serverLabel . ': Direct cPanel Basic Auth failed HTTP ' . $directResponse->status();
+                } catch (\Throwable $e) {
+                    $allErrors[] = $serverLabel . ': Direct cPanel Basic Auth exception - ' . $e->getMessage();
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | Method 5: Direct cPanel login session.
+                |--------------------------------------------------------------------------
+                */
+
+                try {
+                    $cookieJar = new CookieJar();
+
+                    $loginResponse = Http::withoutVerifying()
                         ->timeout(60)
+                        ->asForm()
                         ->acceptJson()
                         ->withOptions([
                             'verify' => false,
+                            'cookies' => $cookieJar,
+                            'allow_redirects' => false,
                             'connect_timeout' => 20,
                         ])
-                        ->withBasicAuth($cpanelUser, $cpanelPassword),
-                    $directUrl,
-                    $params
-                );
+                        ->post('https://' . $host . ':2083/login/?login_only=1', [
+                            'user' => $cpanelUser,
+                            'pass' => $cpanelPassword,
+                        ]);
 
-                if ($directResponse->successful()) {
-                    $directJson = $directResponse->json();
+                    if ($loginResponse->successful()) {
+                        $loginJson = $loginResponse->json();
 
-                    if ((string) data_get($directJson, 'status') !== '0') {
-                        return [
-                            'status' => data_get($directJson, 'status', 1),
-                            'data' => data_get($directJson, 'data', []),
-                            'errors' => data_get($directJson, 'errors', []),
-                            'messages' => data_get($directJson, 'messages', []),
-                        ];
+                        if ((int) data_get($loginJson, 'status') === 1) {
+                            $securityToken = data_get($loginJson, 'security_token');
+
+                            if ($securityToken) {
+                                return $this->callCpanelSessionUapi(
+                                    $host,
+                                    trim($securityToken, '/'),
+                                    $cookieJar,
+                                    $module,
+                                    $function,
+                                    $params
+                                );
+                            }
+
+                            $allErrors[] = $serverLabel . ': Direct cPanel login missing security_token.';
+                        } else {
+                            $allErrors[] = $serverLabel . ': Direct cPanel login denied.';
+                        }
+                    } else {
+                        $allErrors[] = $serverLabel . ': Direct cPanel login failed HTTP ' . $loginResponse->status();
                     }
+                } catch (\Throwable $e) {
+                    $allErrors[] = $serverLabel . ': Direct cPanel login session exception - ' . $e->getMessage();
                 }
-
-                $errors[] = 'Direct cPanel Basic Auth failed HTTP ' . $directResponse->status();
-            } catch (\Throwable $e) {
-                $errors[] = 'Direct cPanel Basic Auth exception: ' . $e->getMessage();
-            }
-        } else {
-            $errors[] = 'No real cPanel password saved.';
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Method 4: Direct cPanel login session.
-        |--------------------------------------------------------------------------
-        | This fixes HTTP 401 cPanel Login page when Basic Auth is blocked.
-        |--------------------------------------------------------------------------
-        */
-
-        if ($cpanelPassword) {
-            try {
-                $cookieJar = new CookieJar();
-
-                $loginResponse = Http::withoutVerifying()
-                    ->timeout(60)
-                    ->asForm()
-                    ->acceptJson()
-                    ->withOptions([
-                        'verify' => false,
-                        'cookies' => $cookieJar,
-                        'allow_redirects' => false,
-                        'connect_timeout' => 20,
-                    ])
-                    ->post('https://' . $host . ':2083/login/?login_only=1', [
-                        'user' => $cpanelUser,
-                        'pass' => $cpanelPassword,
-                    ]);
-
-                if (!$loginResponse->successful()) {
-                    $errors[] = 'Direct cPanel login failed HTTP ' . $loginResponse->status();
-                    throw new \Exception('Direct cPanel login failed.');
-                }
-
-                $loginJson = $loginResponse->json();
-
-                if ((int) data_get($loginJson, 'status') !== 1) {
-                    $errors[] = 'Direct cPanel login denied: ' . (
-                        data_get($loginJson, 'message')
-                        ?: data_get($loginJson, 'reason')
-                        ?: 'Invalid cPanel username/password.'
-                    );
-
-                    throw new \Exception('Direct cPanel login denied.');
-                }
-
-                $securityToken = data_get($loginJson, 'security_token');
-
-                if (!$securityToken) {
-                    $errors[] = 'Direct cPanel login did not return security_token.';
-                    throw new \Exception('Missing security_token.');
-                }
-
-                $securityToken = '/' . ltrim($securityToken, '/');
-
-                return $this->callCpanelSessionUapi(
-                    $host,
-                    trim($securityToken, '/'),
-                    $cookieJar,
-                    $module,
-                    $function,
-                    $params
-                );
-            } catch (\Throwable $e) {
-                $errors[] = 'Direct cPanel login session exception: ' . $e->getMessage();
+            } else {
+                $allErrors[] = $serverLabel . ': No real cPanel password saved.';
             }
         }
 
         throw new \Exception(
             'Cannot access cPanel File Manager API for user ' .
             $cpanelUser .
-            '. The saved password is not accepted by cPanel or WHM access is limited. Errors: ' .
-            implode(' | ', $errors)
+            '. Save the real cPanel password or cPanel API token for this developer. Errors: ' .
+            implode(' | ', array_slice($allErrors, -12))
         );
+    }
+
+    private function whmRequest(
+        string $host,
+        ?string $username,
+        ?string $password,
+        ?string $token,
+        string $url,
+        array $params = []
+    ) {
+        $username = trim((string) $username);
+        $password = trim((string) $password);
+        $token = trim((string) $token);
+
+        if (!$username) {
+            $username = 'root';
+        }
+
+        $request = Http::withoutVerifying()
+            ->timeout(60)
+            ->acceptJson()
+            ->withOptions([
+                'verify' => false,
+                'connect_timeout' => 20,
+            ]);
+
+        if ($token) {
+            $request = $request->withHeaders([
+                'Authorization' => 'whm ' . $username . ':' . $token,
+            ]);
+        } elseif ($password) {
+            $request = $request->withBasicAuth($username, $password);
+        } else {
+            return null;
+        }
+
+        return $request->get($url, $params);
     }
 
     private function callCpanelSessionUapi(
@@ -580,6 +698,7 @@ class DeveloperFileEditorController extends Controller
         array $params = []
     ): array {
         $token = trim($token, '/');
+
         $apiUrl = 'https://' . $host . ':2083/' . $token . '/execute/' . $module . '/' . $function;
 
         $apiResponse = $this->cpanelRequest(
@@ -596,10 +715,7 @@ class DeveloperFileEditorController extends Controller
         );
 
         if (!$apiResponse->successful()) {
-            throw new \Exception(
-                'cPanel session UAPI failed HTTP ' .
-                $apiResponse->status()
-            );
+            throw new \Exception('cPanel session UAPI failed HTTP ' . $apiResponse->status());
         }
 
         $apiJson = $apiResponse->json();
@@ -627,9 +743,7 @@ class DeveloperFileEditorController extends Controller
     private function cpanelRequest($pendingRequest, string $url, array $params)
     {
         if (array_key_exists('content', $params)) {
-            return $pendingRequest
-                ->asForm()
-                ->post($url, $params);
+            return $pendingRequest->asForm()->post($url, $params);
         }
 
         return $pendingRequest->get($url, $params);
@@ -639,9 +753,47 @@ class DeveloperFileEditorController extends Controller
     {
         $possibleColumns = [
             'cpanel_password',
+            'cpanel_plain_password',
             'temporary_password',
             'ssh_password',
             'password_plain',
+        ];
+
+        foreach ($possibleColumns as $column) {
+            if (!Schema::hasColumn($developer->getTable(), $column)) {
+                continue;
+            }
+
+            if (empty($developer->{$column})) {
+                continue;
+            }
+
+            $value = (string) $developer->{$column};
+
+            if (Str::startsWith($value, ['$2y$', '$argon2i$', '$argon2id$'])) {
+                continue;
+            }
+
+            try {
+                return Crypt::decryptString($value);
+            } catch (\Throwable $e) {
+                try {
+                    return decrypt($value);
+                } catch (\Throwable $e2) {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function developerCpanelToken(DeveloperUser $developer): ?string
+    {
+        $possibleColumns = [
+            'cpanel_api_token',
+            'cpanel_token',
+            'api_token',
         ];
 
         foreach ($possibleColumns as $column) {
@@ -777,23 +929,36 @@ class DeveloperFileEditorController extends Controller
         return array_values($items);
     }
 
-    private function serverForDeveloper(DeveloperUser $developer): Server
+    private function candidateServers(DeveloperUser $developer)
     {
+        $servers = collect();
+
         if (Schema::hasColumn($developer->getTable(), 'server_id') && !empty($developer->server_id)) {
             $server = Server::find($developer->server_id);
 
             if ($server) {
-                return $server;
+                $servers->push($server);
             }
         }
 
-        $server = Server::latest()->first();
+        $allServers = Server::latest()->get();
 
-        if (!$server) {
+        foreach ($allServers as $server) {
+            if (!$servers->contains('id', $server->id)) {
+                $servers->push($server);
+            }
+        }
+
+        if ($servers->isEmpty()) {
             throw new \Exception('Server record not found.');
         }
 
-        return $server;
+        return $servers;
+    }
+
+    private function serverForDeveloper(DeveloperUser $developer): Server
+    {
+        return $this->candidateServers($developer)->first();
     }
 
     private function serverCredentials(Server $server): array
@@ -822,10 +987,18 @@ class DeveloperFileEditorController extends Controller
             'ssh_password',
         ]);
 
+        $token = $this->serverSecret($server, [
+            'whm_token',
+            'api_token',
+            'whm_api_token',
+            'access_hash',
+        ]);
+
         return [
             'host' => $host ? trim($host) : null,
             'username' => trim($username ?: 'root'),
             'password' => $password ? trim($password) : null,
+            'token' => $token ? trim($token) : null,
         ];
     }
 
@@ -1020,6 +1193,6 @@ class DeveloperFileEditorController extends Controller
         $message = html_entity_decode($message);
         $message = preg_replace('/\s+/', ' ', $message);
 
-        return Str::limit(trim($message), 900);
+        return Str::limit(trim($message), 1200);
     }
 }
