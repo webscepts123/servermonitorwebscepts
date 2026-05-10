@@ -212,7 +212,10 @@ class DeveloperWorkspaceController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 1. Main saved per-account editor URL
+        | 1. Saved per-account code-server URL
+        |--------------------------------------------------------------------------
+        | Example:
+        | https://code-devteengirls.webscepts.com
         |--------------------------------------------------------------------------
         */
 
@@ -226,7 +229,7 @@ class DeveloperWorkspaceController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 2. Optional old/fallback column
+        | 2. Optional old fallback column
         |--------------------------------------------------------------------------
         */
 
@@ -240,10 +243,9 @@ class DeveloperWorkspaceController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 3. Auto-generate from cPanel username
+        | 3. Auto-generate code-server URL from cPanel username
         |--------------------------------------------------------------------------
-        | Example:
-        | devteengirls => https://code-devteengirls.webscepts.com
+        | This must point to the code-server backend, not website domain.
         |--------------------------------------------------------------------------
         */
 
@@ -259,24 +261,7 @@ class DeveloperWorkspaceController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 4. Auto-generate from domain if username missing
-        |--------------------------------------------------------------------------
-        */
-
-        $domain = trim((string) ($developer->cpanel_domain ?? ''));
-
-        if ($domain) {
-            $domain = strtolower($domain);
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = preg_replace('#/.*$#', '', $domain);
-            $domain = str_replace([':', '_'], '-', $domain);
-
-            return $this->normalizeUrl('https://code-' . $domain);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 5. Final global fallback only
+        | 4. Final global fallback only
         |--------------------------------------------------------------------------
         */
 
