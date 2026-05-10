@@ -1,10 +1,39 @@
-@extends('layouts.developer')
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web VS Code - Developer Codes</title>
 
-@section('title', 'Web VS Code')
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
-@section('developer-content')
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #020617;
+        }
+
+        .editor-frame {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            background: #ffffff;
+        }
+    </style>
+</head>
+
+<body>
 
 @php
+    use Illuminate\Support\Str;
+    use Illuminate\Support\Facades\Route;
+
     $developerName = $developer->name
         ?? $developer->cpanel_username
         ?? $developer->email
@@ -18,13 +47,19 @@
         ?? $developer->domain
         ?? 'developer workspace';
 
+    $cpanelUsername = $developer->cpanel_username
+        ?? $developer->ssh_username
+        ?? 'developer';
+
+    $framework = strtoupper($developer->framework ?? 'custom');
+
     $projectRoot = $projectRoot
         ?? $developer->project_root
         ?? $developer->allowed_project_path
         ?? null;
 
     if (!$projectRoot) {
-        $projectRoot = '/home/' . ($developer->cpanel_username ?? $developer->ssh_username ?? 'developer') . '/public_html';
+        $projectRoot = '/home/' . $cpanelUsername . '/public_html';
     }
 
     $projectRoot = rtrim($projectRoot, '/');
@@ -33,11 +68,12 @@
     |--------------------------------------------------------------------------
     | Backend editor URL
     |--------------------------------------------------------------------------
-    | Must be code-server / VS Code backend URL:
+    | Must be actual code-server / VS Code backend.
+    | Correct:
     | https://code-devteengirls.webscepts.com
     |
-    | Not normal website:
-    | https://dev.teengirls.lk
+    | Wrong:
+    | https://developercodes.webscepts.com/codeditor
     |--------------------------------------------------------------------------
     */
 
@@ -46,22 +82,51 @@
         ?? $developer->vscode_url
         ?? null;
 
-    if (!$editorBackendUrl && !empty($developer->cpanel_username)) {
-        $editorBackendUrl = 'https://code-' . strtolower($developer->cpanel_username) . '.webscepts.com';
+    if (!$editorBackendUrl && !empty($cpanelUsername)) {
+        $editorBackendUrl = 'https://code-' . strtolower($cpanelUsername) . '.webscepts.com';
     }
 
-    if ($editorBackendUrl && !str_starts_with($editorBackendUrl, 'http://') && !str_starts_with($editorBackendUrl, 'https://')) {
+    if ($editorBackendUrl && !Str::startsWith($editorBackendUrl, ['http://', 'https://'])) {
         $editorBackendUrl = 'https://' . $editorBackendUrl;
     }
 
     $editorBackendUrl = $editorBackendUrl ? rtrim($editorBackendUrl, '/') : null;
+
+    $currentPublicEditorUrl = Route::has('developer.domain.codeditor')
+        ? route('developer.domain.codeditor')
+        : url('/codeditor');
+
+    $workspaceUrl = Route::has('developer.domain.workspace')
+        ? route('developer.domain.workspace')
+        : url('/workspace');
+
+    $logoutUrl = Route::has('developer.logout')
+        ? route('developer.logout')
+        : url('/logout');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Stop iframe recursion
+    |--------------------------------------------------------------------------
+    | If backend URL is same as public codeditor route, do not iframe it.
+    |--------------------------------------------------------------------------
+    */
+
+    $isSelfIframe = false;
+
+    if ($editorBackendUrl) {
+        $cleanBackend = rtrim($editorBackendUrl, '/');
+        $cleanPublic = rtrim($currentPublicEditorUrl, '/');
+
+        $isSelfIframe = $cleanBackend === $cleanPublic
+            || str_contains($cleanBackend, 'developercodes.webscepts.com/codeditor');
+    }
 @endphp
 
-<div class="h-screen flex flex-col bg-slate-950 overflow-hidden">
+<div class="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden">
 
     {{-- Top Bar --}}
-    <div class="h-16 bg-slate-950 border-b border-white/10 px-5 lg:px-6 flex items-center justify-between text-white shrink-0">
-
+    <header class="h-16 bg-slate-950 border-b border-white/10 px-4 lg:px-6 flex items-center justify-between text-white shrink-0">
         <div class="flex items-center gap-4 min-w-0">
             <div class="w-11 h-11 rounded-2xl bg-blue-600 flex items-center justify-center shrink-0">
                 <i class="fa-solid fa-code text-lg"></i>
@@ -78,32 +143,34 @@
             </div>
         </div>
 
-        <div class="hidden xl:flex items-center gap-3 min-w-0">
-            <span class="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-xs font-black max-w-[320px] truncate">
+        <div class="flex items-center gap-2 lg:gap-3 min-w-0">
+            <span class="hidden xl:inline-flex px-4 py-2 rounded-full bg-white/10 border border-white/10 text-xs font-black max-w-[280px] truncate">
                 Domain: {{ $domain }}
             </span>
 
-            <span class="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-xs font-black max-w-[420px] truncate">
+            <span class="hidden xl:inline-flex px-4 py-2 rounded-full bg-white/10 border border-white/10 text-xs font-black max-w-[380px] truncate">
                 {{ $projectRoot }}
             </span>
 
-            <a href="{{ route('developer.domain.workspace') }}"
-               class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-sm">
+            <a href="{{ $workspaceUrl }}"
+               class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-sm transition">
                 <i class="fa-solid fa-arrow-left mr-2"></i>
                 Workspace
             </a>
-        </div>
 
-        <div class="xl:hidden flex items-center gap-2">
-            <a href="{{ route('developer.domain.workspace') }}"
-               class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center">
-                <i class="fa-solid fa-arrow-left"></i>
-            </a>
+            <form method="POST" action="{{ $logoutUrl }}" class="hidden md:block">
+                @csrf
+                <button type="submit"
+                        class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-sm transition">
+                    <i class="fa-solid fa-right-from-bracket mr-2"></i>
+                    Logout
+                </button>
+            </form>
         </div>
-    </div>
+    </header>
 
     {{-- Info Bar --}}
-    <div class="bg-slate-900 border-b border-white/10 px-5 lg:px-6 py-3 text-white shrink-0">
+    <section class="bg-slate-900 border-b border-white/10 px-4 lg:px-6 py-3 text-white shrink-0">
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div class="flex flex-wrap items-center gap-2">
                 <span class="px-3 py-1 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 text-xs font-black">
@@ -111,32 +178,27 @@
                 </span>
 
                 <span class="px-3 py-1 rounded-full bg-green-500/20 text-green-200 border border-green-400/30 text-xs font-black">
-                    User: {{ $developer->cpanel_username ?? $developer->ssh_username ?? '-' }}
+                    User: {{ $cpanelUsername }}
                 </span>
 
                 <span class="px-3 py-1 rounded-full bg-purple-500/20 text-purple-200 border border-purple-400/30 text-xs font-black">
-                    Framework: {{ strtoupper($developer->framework ?? 'custom') }}
+                    Framework: {{ $framework }}
                 </span>
             </div>
 
             <div class="text-xs text-slate-400 font-bold break-all">
                 VS Code Backend:
-                <span class="text-slate-200">{{ $editorBackendUrl ?: 'Not configured' }}</span>
+                <span class="text-slate-200">
+                    {{ $editorBackendUrl ?: 'Not configured' }}
+                </span>
             </div>
         </div>
-    </div>
+    </section>
 
-    {{-- Editor Frame --}}
-    <div class="flex-1 bg-slate-100 relative">
+    {{-- Editor Area --}}
+    <main class="flex-1 bg-slate-100 relative overflow-hidden">
 
-        @if($editorBackendUrl)
-            <iframe
-                src="{{ $editorBackendUrl }}"
-                class="w-full h-full border-0 bg-white"
-                allow="clipboard-read; clipboard-write; fullscreen"
-                referrerpolicy="no-referrer-when-downgrade">
-            </iframe>
-        @else
+        @if(!$editorBackendUrl)
             <div class="absolute inset-0 flex items-center justify-center p-6">
                 <div class="max-w-xl w-full rounded-3xl bg-white border border-red-200 shadow-xl p-8 text-center">
                     <div class="w-16 h-16 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center mx-auto">
@@ -152,22 +214,66 @@
                     </p>
 
                     <div class="mt-5 rounded-2xl bg-slate-100 border border-slate-200 p-4 text-left text-sm font-bold text-slate-700">
-                        Example:
+                        Correct example:
                         <div class="mt-1 text-blue-700 break-all">
-                            https://code-{{ strtolower($developer->cpanel_username ?? 'username') }}.webscepts.com
+                            https://code-{{ strtolower($cpanelUsername) }}.webscepts.com
                         </div>
                     </div>
 
-                    <a href="{{ route('developer.domain.workspace') }}"
+                    <a href="{{ $workspaceUrl }}"
                        class="inline-flex mt-6 px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black">
                         Back to Workspace
                     </a>
                 </div>
             </div>
+
+        @elseif($isSelfIframe)
+            <div class="absolute inset-0 flex items-center justify-center p-6">
+                <div class="max-w-2xl w-full rounded-3xl bg-white border border-red-200 shadow-xl p-8 text-center">
+                    <div class="w-16 h-16 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center mx-auto">
+                        <i class="fa-solid fa-rotate-left text-2xl"></i>
+                    </div>
+
+                    <h2 class="text-2xl font-black text-slate-900 mt-5">
+                        Wrong VS Code Backend URL
+                    </h2>
+
+                    <p class="text-slate-500 mt-2 font-bold">
+                        The backend URL is pointing back to this same Developer Codes page, so it creates a nested iframe.
+                    </p>
+
+                    <div class="mt-5 rounded-2xl bg-red-50 border border-red-200 p-4 text-left text-sm font-bold text-red-700">
+                        Wrong:
+                        <div class="mt-1 break-all">
+                            {{ $editorBackendUrl }}
+                        </div>
+                    </div>
+
+                    <div class="mt-4 rounded-2xl bg-green-50 border border-green-200 p-4 text-left text-sm font-bold text-green-700">
+                        Correct:
+                        <div class="mt-1 break-all">
+                            https://code-{{ strtolower($cpanelUsername) }}.webscepts.com
+                        </div>
+                    </div>
+
+                    <a href="{{ $workspaceUrl }}"
+                       class="inline-flex mt-6 px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black">
+                        Back to Workspace
+                    </a>
+                </div>
+            </div>
+
+        @else
+            <iframe
+                src="{{ $editorBackendUrl }}"
+                class="editor-frame"
+                allow="clipboard-read; clipboard-write; fullscreen"
+                referrerpolicy="no-referrer-when-downgrade">
+            </iframe>
         @endif
 
-    </div>
-
+    </main>
 </div>
 
-@endsection
+</body>
+</html>
