@@ -34,15 +34,6 @@ class DeveloperCpanelImportController extends Controller
         ));
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Fetch cPanel Accounts From WHM
-    |--------------------------------------------------------------------------
-    | Updated:
-    | 1. First tries SSH command: whmapi1 listaccts --output=json
-    | 2. Then falls back to WHM HTTP API username/password
-    |--------------------------------------------------------------------------
-    */
     public function sync(Request $request)
     {
         $data = $request->validate([
@@ -68,11 +59,6 @@ class DeveloperCpanelImportController extends Controller
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Bulk Import Selected cPanel Users To Developer Codes
-    |--------------------------------------------------------------------------
-    */
     public function bulkImport(Request $request)
     {
         $data = $request->validate([
@@ -80,6 +66,8 @@ class DeveloperCpanelImportController extends Controller
             'selected' => ['nullable', 'array'],
             'accounts' => ['nullable', 'array'],
         ]);
+
+        $server = Server::findOrFail($data['server_id']);
 
         $selected = $data['selected'] ?? [];
         $accounts = $data['accounts'] ?? [];
@@ -116,18 +104,8 @@ class DeveloperCpanelImportController extends Controller
             $projectRoot = trim($account['project_root'] ?? '') ?: $frameworkConfig['project_root'];
             $allowedPath = $projectRoot ?: ('/home/' . $cpanelUsername);
 
-            /*
-            |--------------------------------------------------------------------------
-            | Developer Portal Access ON/OFF
-            |--------------------------------------------------------------------------
-            | Blade can send:
-            | accounts[USERNAME][developer_portal_access] = 1
-            | or:
-            | accounts[USERNAME][developer_portal_access] = 0
-            |--------------------------------------------------------------------------
-            */
+            $codeEditorUrl = 'https://' . $this->codeEditorDomainForUsername($cpanelUsername);
             $portalAccess = $this->boolFromArray($account, 'developer_portal_access', true);
-
             $temporaryPassword = Str::password(16);
 
             $dbType = strtolower(trim($account['db_type'] ?? 'mysql'));
@@ -141,7 +119,7 @@ class DeveloperCpanelImportController extends Controller
             }
 
             $payload = [
-                'server_id' => $data['server_id'],
+                'server_id' => $server->id,
 
                 'name' => $account['name'] ?: $cpanelUsername,
                 'email' => $contactEmail,
@@ -163,6 +141,9 @@ class DeveloperCpanelImportController extends Controller
                 'build_command' => trim($account['build_command'] ?? '') ?: $frameworkConfig['build_command'],
                 'deploy_command' => trim($account['deploy_command'] ?? '') ?: $frameworkConfig['deploy_command'],
                 'start_command' => trim($account['start_command'] ?? '') ?: $frameworkConfig['start_command'],
+
+                'code_editor_url' => $codeEditorUrl,
+                'vscode_url' => $codeEditorUrl,
 
                 'can_git_pull' => !empty($account['can_git_pull']),
                 'can_clear_cache' => !empty($account['can_clear_cache']),
@@ -186,12 +167,21 @@ class DeveloperCpanelImportController extends Controller
 
             $payload = array_merge($payload, $this->portalAccessPayload($portalAccess));
 
-            DeveloperUser::updateOrCreate(
+            $developer = DeveloperUser::updateOrCreate(
                 [
                     'cpanel_username' => $cpanelUsername,
                 ],
                 $this->filterDeveloperColumns($payload)
             );
+
+            $setupMessage = null;
+
+            try {
+                $setupResult = $this->provisionCodeEditorForDeveloper($developer);
+                $setupMessage = 'VS Code SSL ready: ' . $setupResult['url'];
+            } catch (\Throwable $setupError) {
+                $setupMessage = 'VS Code setup failed: ' . $setupError->getMessage();
+            }
 
             $updated++;
 
@@ -205,6 +195,9 @@ class DeveloperCpanelImportController extends Controller
                 'portal_access' => $portalAccess ? 'Enabled' : 'Disabled',
                 'password' => $temporaryPassword,
                 'url' => 'https://developercodes.webscepts.com/login',
+                'codeditor' => 'https://developercodes.webscepts.com/codeditor',
+                'code_editor_url' => $codeEditorUrl,
+                'code_editor_setup' => $setupMessage,
             ];
         }
 
@@ -213,11 +206,6 @@ class DeveloperCpanelImportController extends Controller
             ->with('created_logins', $createdLogins);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Import One Normal cPanel Login
-    |--------------------------------------------------------------------------
-    */
     public function importSingleCpanelLogin(Request $request)
     {
         $data = $request->validate([
@@ -293,6 +281,7 @@ class DeveloperCpanelImportController extends Controller
             $dbType = 'postgresql';
         }
 
+        $codeEditorUrl = 'https://' . $this->codeEditorDomainForUsername($cpanelUsername);
         $portalAccess = $request->boolean('developer_portal_access', true);
 
         $payload = [
@@ -318,6 +307,9 @@ class DeveloperCpanelImportController extends Controller
             'deploy_command' => $frameworkConfig['deploy_command'],
             'start_command' => $frameworkConfig['start_command'],
 
+            'code_editor_url' => $codeEditorUrl,
+            'vscode_url' => $codeEditorUrl,
+
             'can_git_pull' => $request->boolean('can_git_pull'),
             'can_clear_cache' => $request->boolean('can_clear_cache', true),
             'can_composer' => $request->boolean('can_composer'),
@@ -341,12 +333,21 @@ class DeveloperCpanelImportController extends Controller
 
         $payload = array_merge($payload, $this->portalAccessPayload($portalAccess));
 
-        DeveloperUser::updateOrCreate(
+        $developer = DeveloperUser::updateOrCreate(
             [
                 'cpanel_username' => $cpanelUsername,
             ],
             $this->filterDeveloperColumns($payload)
         );
+
+        $setupMessage = null;
+
+        try {
+            $setupResult = $this->provisionCodeEditorForDeveloper($developer);
+            $setupMessage = 'VS Code SSL ready: ' . $setupResult['url'];
+        } catch (\Throwable $setupError) {
+            $setupMessage = 'VS Code setup failed: ' . $setupError->getMessage();
+        }
 
         return back()
             ->with('success', 'Developer Codes login created from cPanel login.')
@@ -361,15 +362,138 @@ class DeveloperCpanelImportController extends Controller
                     'portal_access' => $portalAccess ? 'Enabled' : 'Disabled',
                     'password' => $cpanelPassword,
                     'url' => 'https://developercodes.webscepts.com/login',
+                    'codeditor' => 'https://developercodes.webscepts.com/codeditor',
+                    'code_editor_url' => $codeEditorUrl,
+                    'code_editor_setup' => $setupMessage,
                 ],
             ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Reset Developer Password
-    |--------------------------------------------------------------------------
-    */
+    public function updateSettings(Request $request, DeveloperUser $developer)
+    {
+        $data = $request->validate([
+            'framework' => ['nullable', 'string', 'max:100'],
+            'project_root' => ['nullable', 'string', 'max:255'],
+            'code_editor_url' => ['nullable', 'string', 'max:255'],
+
+            'build_command' => ['nullable', 'string', 'max:500'],
+            'deploy_command' => ['nullable', 'string', 'max:500'],
+            'start_command' => ['nullable', 'string', 'max:500'],
+
+            'developer_portal_access' => ['nullable'],
+
+            'db_type' => ['nullable', 'string', 'max:50'],
+            'db_host' => ['nullable', 'string', 'max:255'],
+            'db_username' => ['nullable', 'string', 'max:255'],
+            'db_name' => ['nullable', 'string', 'max:255'],
+
+            'can_view_files' => ['nullable'],
+            'can_edit_files' => ['nullable'],
+            'can_delete_files' => ['nullable'],
+            'can_git_pull' => ['nullable'],
+            'can_clear_cache' => ['nullable'],
+            'can_composer' => ['nullable'],
+            'can_npm' => ['nullable'],
+            'can_run_build' => ['nullable'],
+            'can_run_python' => ['nullable'],
+            'can_restart_app' => ['nullable'],
+            'can_mysql' => ['nullable'],
+            'can_postgresql' => ['nullable'],
+        ]);
+
+        $enabled = $request->boolean('developer_portal_access');
+
+        $codeEditorUrl = trim($data['code_editor_url'] ?? '');
+
+        if (
+            !$codeEditorUrl ||
+            str_contains($codeEditorUrl, 'developercodes.webscepts.com/codeditor') ||
+            str_ends_with(rtrim($codeEditorUrl, '/'), '/codeditor')
+        ) {
+            $username = $developer->cpanel_username ?: $developer->ssh_username ?: $developer->name;
+            $codeEditorUrl = 'https://' . $this->codeEditorDomainForUsername($username);
+        }
+
+        $payload = [
+            'framework' => $data['framework'] ?? $developer->framework,
+            'project_root' => $data['project_root'] ?? $developer->project_root,
+            'allowed_project_path' => $data['project_root'] ?? $developer->allowed_project_path,
+            'code_editor_url' => $codeEditorUrl,
+            'vscode_url' => $codeEditorUrl,
+
+            'build_command' => $data['build_command'] ?? null,
+            'deploy_command' => $data['deploy_command'] ?? null,
+            'start_command' => $data['start_command'] ?? null,
+
+            'db_type' => $data['db_type'] ?? null,
+            'db_host' => $data['db_host'] ?? null,
+            'db_username' => $data['db_username'] ?? null,
+            'db_name' => $data['db_name'] ?? null,
+
+            'can_view_files' => $request->boolean('can_view_files'),
+            'can_edit_files' => $request->boolean('can_edit_files'),
+            'can_delete_files' => $request->boolean('can_delete_files'),
+            'can_git_pull' => $request->boolean('can_git_pull'),
+            'can_clear_cache' => $request->boolean('can_clear_cache'),
+            'can_composer' => $request->boolean('can_composer'),
+            'can_npm' => $request->boolean('can_npm'),
+            'can_run_build' => $request->boolean('can_run_build'),
+            'can_run_python' => $request->boolean('can_run_python'),
+            'can_restart_app' => $request->boolean('can_restart_app'),
+            'can_mysql' => $request->boolean('can_mysql'),
+            'can_postgresql' => $request->boolean('can_postgresql'),
+        ];
+
+        $payload = array_merge($payload, $this->portalAccessPayload($enabled));
+
+        $developer->update($this->filterDeveloperColumns($payload));
+
+        return back()->with('success', 'Developer settings updated successfully.');
+    }
+
+    public function setupCodeEditor(DeveloperUser $developer)
+    {
+        try {
+            $result = $this->provisionCodeEditorForDeveloper($developer);
+
+            return back()->with(
+                'success',
+                'VS Code, CloudNS DNS, proxy, code-server and SSL setup completed: ' . $result['url']
+            );
+        } catch (\Throwable $e) {
+            return back()->with(
+                'error',
+                'VS Code setup failed: ' . $e->getMessage()
+            );
+        }
+    }
+
+    public function setupAllExistingCodeEditors(Request $request)
+    {
+        $developers = DeveloperUser::query()
+            ->whereNotNull('cpanel_username')
+            ->get();
+
+        $success = 0;
+        $failed = 0;
+        $messages = [];
+
+        foreach ($developers as $developer) {
+            try {
+                $result = $this->provisionCodeEditorForDeveloper($developer);
+                $success++;
+                $messages[] = ($developer->cpanel_username ?? $developer->email) . ': ready - ' . $result['url'];
+            } catch (\Throwable $e) {
+                $failed++;
+                $messages[] = ($developer->cpanel_username ?? $developer->email) . ': failed - ' . $e->getMessage();
+            }
+        }
+
+        return back()
+            ->with('success', "Existing VS Code setup finished. Success: {$success}, Failed: {$failed}")
+            ->with('code_editor_setup_log', $messages);
+    }
+
     public function resetPassword(DeveloperUser $developer)
     {
         $temporaryPassword = Str::password(16);
@@ -395,63 +519,21 @@ class DeveloperCpanelImportController extends Controller
                     'portal_access' => $this->developerPortalIsActive($developer) ? 'Enabled' : 'Disabled',
                     'password' => $temporaryPassword,
                     'url' => 'https://developercodes.webscepts.com/login',
+                    'codeditor' => 'https://developercodes.webscepts.com/codeditor',
+                    'code_editor_url' => $developer->code_editor_url ?? null,
                 ],
             ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Turn Developer Portal Access ON/OFF
-    |--------------------------------------------------------------------------
-    */
     public function toggle(DeveloperUser $developer)
     {
-        $enabled = !$this->developerPortalIsActive($developer);
+        $active = !$this->developerPortalIsActive($developer);
 
-        $developer->update(
-            $this->filterDeveloperColumns($this->portalAccessPayload($enabled))
-        );
+        $developer->update($this->filterDeveloperColumns(
+            $this->portalAccessPayload($active)
+        ));
 
-        return back()->with(
-            'success',
-            $enabled ? 'Developer portal access enabled.' : 'Developer portal access disabled.'
-        );
-    }
-
-    public function portalAccess(Request $request, DeveloperUser $developer)
-    {
-        $data = $request->validate([
-            'enabled' => ['required'],
-        ]);
-
-        $enabled = filter_var($data['enabled'], FILTER_VALIDATE_BOOLEAN);
-
-        $developer->update(
-            $this->filterDeveloperColumns($this->portalAccessPayload($enabled))
-        );
-
-        return back()->with(
-            'success',
-            $enabled ? 'Developer portal access enabled.' : 'Developer portal access disabled.'
-        );
-    }
-
-    public function enablePortal(DeveloperUser $developer)
-    {
-        $developer->update(
-            $this->filterDeveloperColumns($this->portalAccessPayload(true))
-        );
-
-        return back()->with('success', 'Developer portal access enabled.');
-    }
-
-    public function disablePortal(DeveloperUser $developer)
-    {
-        $developer->update(
-            $this->filterDeveloperColumns($this->portalAccessPayload(false))
-        );
-
-        return back()->with('success', 'Developer portal access disabled.');
+        return back()->with('success', 'Developer status updated.');
     }
 
     public function destroy(DeveloperUser $developer)
@@ -461,231 +543,602 @@ class DeveloperCpanelImportController extends Controller
         return back()->with('success', 'Developer login deleted.');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Fetch WHM Accounts
-    |--------------------------------------------------------------------------
-    | This is the important updated part.
-    | It uses the Server model fields:
-    | host, username, password, ssh_port
-    |--------------------------------------------------------------------------
-    */
-    private function fetchCpanelAccounts(Server $server): array
+    private function provisionCodeEditorForDeveloper(DeveloperUser $developer): array
     {
-        $host = trim((string) ($server->host ?? ''));
-        $username = trim((string) ($server->username ?? ''));
-        $password = $this->getServerPassword($server);
-        $port = (int) ($server->ssh_port ?: 22);
-
-        if (!$host) {
-            throw new \Exception('Server host is missing.');
-        }
+        $username = trim((string) ($developer->cpanel_username ?: $developer->ssh_username));
 
         if (!$username) {
-            throw new \Exception('Server username is missing.');
+            throw new \Exception('Developer cPanel username is missing.');
+        }
+
+        $server = null;
+
+        if (Schema::hasColumn($developer->getTable(), 'server_id') && !empty($developer->server_id)) {
+            $server = Server::find($developer->server_id);
+        }
+
+        if (!$server) {
+            $server = Server::latest()->first();
+        }
+
+        if (!$server) {
+            throw new \Exception('Server record not found for this developer.');
+        }
+
+        $serverIp = $this->serverPublicIp($server);
+
+        if (!$serverIp) {
+            throw new \Exception('Server public IP is missing.');
+        }
+
+        $domain = $this->codeEditorDomainForUsername($username);
+        $subdomain = $this->codeEditorSubdomainForUsername($username);
+        $port = $this->codeEditorPortForDeveloper($developer);
+
+        $projectRoot = $developer->project_root
+            ?: $developer->allowed_project_path
+            ?: '/home/' . $username . '/public_html';
+
+        $projectRoot = rtrim($projectRoot, '/');
+
+        $this->createOrUpdateCloudnsARecord($subdomain, $serverIp);
+
+        $ssh = $this->connectServerSsh($server);
+
+        $this->installCodeServerOnRemote($ssh);
+        $this->createRemoteCodeServerService($ssh, $developer, $domain, $port, $projectRoot);
+        $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
+        $this->installRemoteLetsEncryptSsl($ssh, $domain, $username);
+        $this->remoteCodeEditorHealthCheck($ssh, $domain, $port);
+
+        $developer->update(
+            $this->filterDeveloperColumns([
+                'code_editor_url' => 'https://' . $domain,
+                'vscode_url' => 'https://' . $domain,
+                'code_editor_port' => $port,
+            ])
+        );
+
+        return [
+            'domain' => $domain,
+            'url' => 'https://' . $domain,
+            'port' => $port,
+            'project_root' => $projectRoot,
+        ];
+    }
+
+    private function installCodeServerOnRemote(SSH2 $ssh): void
+    {
+        $command = <<<'BASH'
+set -e
+
+if ! command -v code-server >/dev/null 2>&1; then
+    curl -fsSL https://code-server.dev/install.sh | sh
+fi
+
+code-server --version || true
+BASH;
+
+        $this->runRemoteCommand($ssh, $command, 600);
+    }
+
+    private function createRemoteCodeServerService(
+        SSH2 $ssh,
+        DeveloperUser $developer,
+        string $domain,
+        int $port,
+        string $projectRoot
+    ): void {
+        $username = trim((string) ($developer->cpanel_username ?: $developer->ssh_username));
+
+        if (!$username) {
+            throw new \Exception('Developer username is missing.');
+        }
+
+        $serviceName = 'code-' . strtolower(preg_replace('/[^a-zA-Z0-9\-]/', '-', $username));
+        $serviceName = trim($serviceName, '-');
+
+        $password = null;
+
+        if (!empty($developer->temporary_password)) {
+            try {
+                $password = Crypt::decryptString($developer->temporary_password);
+            } catch (\Throwable $e) {
+                $password = null;
+            }
         }
 
         if (!$password) {
-            throw new \Exception('Server password is missing.');
+            $password = Str::password(22);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Method 1: SSH WHM command
-        |--------------------------------------------------------------------------
-        | This works when your saved server login is SSH/root or sudo-capable.
-        |--------------------------------------------------------------------------
-        */
-        try {
-            $accounts = $this->fetchCpanelAccountsViaSsh(
-                $host,
-                $port,
-                $username,
-                $password,
-                $server
-            );
+        $safeUser = $this->shellArg($username);
+        $safeProjectRoot = $this->shellArg($projectRoot);
+        $safeServiceName = $this->shellArg($serviceName);
 
-            if (!empty($accounts)) {
-                return $accounts;
-            }
-        } catch (\Throwable $sshError) {
-            /*
-            |--------------------------------------------------------------------------
-            | Method 2: HTTP WHM fallback
-            |--------------------------------------------------------------------------
-            | This works only if username/password can access WHM API.
-            |--------------------------------------------------------------------------
-            */
-            try {
-                $accounts = $this->fetchCpanelAccountsViaHttp(
-                    $host,
-                    $username,
-                    $password,
-                    $server
-                );
+        $serviceContent = <<<SERVICE
+[Unit]
+Description=Code Server for {$username}
+After=network.target
 
-                if (!empty($accounts)) {
-                    return $accounts;
-                }
+[Service]
+Type=simple
+User={$username}
+WorkingDirectory={$projectRoot}
+Environment=PASSWORD={$password}
+ExecStart=/usr/bin/code-server --bind-addr 127.0.0.1:{$port} --auth password {$projectRoot}
+Restart=always
+RestartSec=5
 
-                throw new \Exception('HTTP WHM returned empty account list.');
-            } catch (\Throwable $httpError) {
-                throw new \Exception(
-                    'SSH WHM fetch failed: ' . $sshError->getMessage() .
-                    ' | HTTP WHM fetch failed: ' . $httpError->getMessage()
-                );
-            }
-        }
+[Install]
+WantedBy=multi-user.target
+SERVICE;
 
-        throw new \Exception('Unable to fetch cPanel accounts from server.');
-    }
-
-    private function fetchCpanelAccountsViaSsh(
-        string $host,
-        int $port,
-        string $username,
-        string $password,
-        Server $server
-    ): array {
-        $cleanHost = $this->cleanHost($host);
-
-        $ssh = new SSH2($cleanHost, $port);
-        $ssh->setTimeout(60);
-
-        if (!$ssh->login($username, $password)) {
-            throw new \Exception('SSH login failed for ' . $username . '@' . $cleanHost . ':' . $port);
-        }
-
-        $sudoPassword = str_replace("'", "'\"'\"'", $password);
+        $safeServiceContent = $this->shellArg($serviceContent);
 
         $command = <<<BASH
-if [ -x /usr/local/cpanel/bin/whmapi1 ]; then
-    /usr/local/cpanel/bin/whmapi1 listaccts --output=json
-elif command -v whmapi1 >/dev/null 2>&1; then
-    whmapi1 listaccts --output=json
-elif command -v sudo >/dev/null 2>&1; then
-    echo '{$sudoPassword}' | sudo -S /usr/local/cpanel/bin/whmapi1 listaccts --output=json 2>/dev/null
-else
-    echo '{"metadata":{"result":0,"reason":"whmapi1 command not found on server"}}'
+set -e
+
+CODE_SERVER_PATH=\$(command -v code-server || echo /usr/bin/code-server)
+
+if ! id {$safeUser} >/dev/null 2>&1; then
+    echo "System user {$username} does not exist on target server."
+    exit 1
+fi
+
+if [ ! -d {$safeProjectRoot} ]; then
+    mkdir -p {$safeProjectRoot}
+    chown {$username}:{$username} {$safeProjectRoot} || true
+fi
+
+printf "%s" {$safeServiceContent} > /etc/systemd/system/{$serviceName}.service
+sed -i "s#ExecStart=/usr/bin/code-server#ExecStart=\$CODE_SERVER_PATH#g" /etc/systemd/system/{$serviceName}.service
+
+systemctl daemon-reload
+systemctl enable {$safeServiceName}
+systemctl restart {$safeServiceName}
+
+sleep 3
+
+if ! systemctl is-active --quiet {$safeServiceName}; then
+    systemctl status {$safeServiceName} --no-pager
+    exit 1
+fi
+
+if ! ss -tulpn | grep -q ":{$port}"; then
+    echo "code-server service started, but port {$port} is not listening."
+    systemctl status {$safeServiceName} --no-pager
+    exit 1
 fi
 BASH;
 
-        $output = trim((string) $ssh->exec($command));
+        $this->runRemoteCommand($ssh, $command, 300);
+    }
 
-        if (!$output) {
-            throw new \Exception('Empty response from SSH WHM command.');
+    private function createRemoteCodeEditorProxy(SSH2 $ssh, string $domain, int $port, string $cpanelUsername): void
+    {
+        $command = <<<BASH
+set -e
+
+DOMAIN="{$domain}"
+PORT="{$port}"
+CPANEL_USER="{$cpanelUsername}"
+
+echo "Creating reverse proxy for \$DOMAIN to 127.0.0.1:\$PORT"
+
+if [ -x /scripts/rebuildhttpdconf ] && [ -d /etc/apache2/conf.d/userdata ]; then
+    echo "cPanel detected. Creating Apache userdata proxy includes."
+
+    for SSLTYPE in std ssl; do
+        INCLUDE_DIR="/etc/apache2/conf.d/userdata/\$SSLTYPE/2_4/\$CPANEL_USER/\$DOMAIN"
+        INCLUDE_FILE="\$INCLUDE_DIR/code-server.conf"
+
+        mkdir -p "\$INCLUDE_DIR"
+
+        cat > "\$INCLUDE_FILE" <<APACHECONF
+ProxyPreserveHost On
+ProxyRequests Off
+
+RewriteEngine On
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteRule /(.*) ws://127.0.0.1:\$PORT/\$1 [P,L]
+
+ProxyPass / http://127.0.0.1:\$PORT/
+ProxyPassReverse / http://127.0.0.1:\$PORT/
+
+RequestHeader set X-Forwarded-Proto "https"
+RequestHeader set X-Forwarded-Port "443"
+APACHECONF
+    done
+
+    /scripts/ensure_vhost_includes --user="\$CPANEL_USER" || true
+    /scripts/rebuildhttpdconf
+
+    if systemctl list-unit-files | grep -q '^httpd'; then
+        systemctl restart httpd
+    elif systemctl list-unit-files | grep -q '^apache2'; then
+        systemctl restart apache2
+    else
+        service httpd restart || service apache2 restart
+    fi
+
+    exit 0
+fi
+
+echo "Non-cPanel server detected. Creating Nginx proxy."
+
+if ! command -v nginx >/dev/null 2>&1; then
+    echo "Nginx is not installed on target server."
+    exit 1
+fi
+
+mkdir -p /etc/nginx/conf.d
+
+cat > /etc/nginx/conf.d/\$DOMAIN.conf <<NGINXCONF
+server {
+    listen 80;
+    server_name \$DOMAIN;
+
+    location / {
+        proxy_pass http://127.0.0.1:\$PORT;
+        proxy_http_version 1.1;
+
+        proxy_set_header Upgrade \\$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \\$host;
+
+        proxy_set_header X-Real-IP \\$remote_addr;
+        proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\$scheme;
+
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+        proxy_buffering off;
+    }
+}
+NGINXCONF
+
+nginx -t
+systemctl reload nginx
+BASH;
+
+        $this->runRemoteCommand($ssh, $command, 180);
+    }
+
+    private function installRemoteLetsEncryptSsl(SSH2 $ssh, string $domain, string $cpanelUsername): void
+    {
+        $email = config('services.code_editor.certbot_email', env('CERTBOT_EMAIL', 'info@webscepts.com'));
+
+        $safeDomain = $this->shellArg($domain);
+        $safeEmail = $this->shellArg($email);
+        $safeUser = $this->shellArg($cpanelUsername);
+
+        $command = <<<BASH
+set -e
+
+DOMAIN={$safeDomain}
+EMAIL={$safeEmail}
+CPANEL_USER={$safeUser}
+
+echo "Installing or repairing SSL for \$DOMAIN"
+
+if [ -x /usr/local/cpanel/bin/autossl_check ]; then
+    echo "cPanel AutoSSL detected. Running AutoSSL for user \$CPANEL_USER."
+    /usr/local/cpanel/bin/autossl_check --user "\$CPANEL_USER" || true
+fi
+
+if ! command -v certbot >/dev/null 2>&1; then
+    if command -v dnf >/dev/null 2>&1; then
+        dnf install -y epel-release || true
+        dnf install -y certbot python3-certbot-apache python3-certbot-nginx || dnf install -y certbot
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y epel-release || true
+        yum install -y certbot python3-certbot-apache python3-certbot-nginx || yum install -y certbot
+    elif command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y certbot python3-certbot-apache python3-certbot-nginx || apt-get install -y certbot
+    else
+        echo "Cannot install certbot. Unknown package manager."
+        exit 1
+    fi
+fi
+
+sleep 8
+
+if command -v httpd >/dev/null 2>&1 || command -v apache2 >/dev/null 2>&1; then
+    certbot --apache -d "\$DOMAIN" --non-interactive --agree-tos -m "\$EMAIL" --redirect || true
+fi
+
+if command -v nginx >/dev/null 2>&1; then
+    certbot --nginx -d "\$DOMAIN" --non-interactive --agree-tos -m "\$EMAIL" --redirect || true
+fi
+
+if systemctl list-unit-files | grep -q '^httpd'; then
+    systemctl restart httpd || true
+fi
+
+if systemctl list-unit-files | grep -q '^apache2'; then
+    systemctl restart apache2 || true
+fi
+
+if systemctl list-unit-files | grep -q '^nginx'; then
+    nginx -t && systemctl reload nginx || true
+fi
+BASH;
+
+        $this->runRemoteCommand($ssh, $command, 700);
+    }
+
+    private function remoteCodeEditorHealthCheck(SSH2 $ssh, string $domain, int $port): void
+    {
+        $command = <<<BASH
+set -e
+
+DOMAIN="{$domain}"
+PORT="{$port}"
+
+echo "Checking local code-server port..."
+
+if ! curl -I --max-time 10 "http://127.0.0.1:\$PORT" >/tmp/code-server-health.txt 2>&1; then
+    cat /tmp/code-server-health.txt
+    echo "code-server is not responding on 127.0.0.1:\$PORT"
+    exit 1
+fi
+
+echo "Checking public backend URL..."
+
+HTML=\$(curl -Lk --max-time 20 "https://\$DOMAIN" || true)
+
+if echo "\$HTML" | grep -qi "Index of /"; then
+    echo "Backend domain is still showing Apache/cPanel Index of /. Proxy was not applied."
+    exit 1
+fi
+
+if echo "\$HTML" | grep -qi "cgi-bin"; then
+    echo "Backend domain is still showing cPanel cgi-bin index. Proxy was not applied."
+    exit 1
+fi
+
+echo "VS Code backend health check passed."
+BASH;
+
+        $this->runRemoteCommand($ssh, $command, 120);
+    }
+
+    private function codeEditorSubdomainForUsername(string $username): string
+    {
+        $safeUsername = strtolower(preg_replace('/[^a-zA-Z0-9\-]/', '-', $username));
+        $safeUsername = trim($safeUsername, '-');
+
+        return 'code-' . ($safeUsername ?: 'developer');
+    }
+
+    private function codeEditorDomainForUsername(?string $username): string
+    {
+        $username = $username ?: 'developer';
+        $baseDomain = config('services.code_editor.base_domain', env('CODE_EDITOR_BASE_DOMAIN', 'webscepts.com'));
+
+        return $this->codeEditorSubdomainForUsername($username) . '.' . $baseDomain;
+    }
+
+    private function codeEditorPortForDeveloper(DeveloperUser $developer): int
+    {
+        $basePort = (int) config('services.code_editor.port_start', env('CODE_EDITOR_PORT_START', 8081));
+
+        return $basePort + max(((int) $developer->id - 1), 0);
+    }
+
+    private function createOrUpdateCloudnsARecord(string $subdomain, string $serverIp): void
+    {
+        $authId = config('services.cloudns.auth_id', env('CLOUDNS_AUTH_ID'));
+        $authPassword = config('services.cloudns.auth_password', env('CLOUDNS_AUTH_PASSWORD'));
+        $zone = config('services.cloudns.zone', env('CLOUDNS_ZONE', 'webscepts.com'));
+
+        if (!$authId || !$authPassword || !$zone) {
+            throw new \Exception('CloudNS API credentials are missing in .env / services.php.');
         }
 
-        $jsonStart = strpos($output, '{');
+        $listResponse = Http::asForm()
+            ->timeout(60)
+            ->post('https://api.cloudns.net/dns/records.json', [
+                'auth-id' => $authId,
+                'auth-password' => $authPassword,
+                'domain-name' => $zone,
+                'host' => $subdomain,
+                'type' => 'A',
+            ]);
 
-        if ($jsonStart === false) {
-            throw new \Exception('No JSON found in SSH output: ' . Str::limit($output, 500));
+        if (!$listResponse->successful()) {
+            throw new \Exception('CloudNS list records failed: ' . $listResponse->body());
         }
 
-        $output = substr($output, $jsonStart);
+        $records = $listResponse->json();
+        $existingRecordId = null;
 
-        $json = json_decode($output, true);
+        if (is_array($records)) {
+            foreach ($records as $recordId => $record) {
+                $recordHost = $record['host'] ?? '';
+                $recordValue = $record['record'] ?? '';
 
-        if (!is_array($json)) {
-            throw new \Exception('Invalid JSON from SSH WHM command: ' . Str::limit($output, 500));
+                if ($recordHost === $subdomain) {
+                    $existingRecordId = $recordId;
+
+                    if ($recordValue === $serverIp) {
+                        return;
+                    }
+
+                    break;
+                }
+            }
         }
 
+        if ($existingRecordId) {
+            $modifyResponse = Http::asForm()
+                ->timeout(60)
+                ->post('https://api.cloudns.net/dns/mod-record.json', [
+                    'auth-id' => $authId,
+                    'auth-password' => $authPassword,
+                    'domain-name' => $zone,
+                    'record-id' => $existingRecordId,
+                    'host' => $subdomain,
+                    'record' => $serverIp,
+                    'ttl' => 300,
+                ]);
+
+            if (!$modifyResponse->successful()) {
+                throw new \Exception('CloudNS update record failed: ' . $modifyResponse->body());
+            }
+
+            $body = $modifyResponse->json();
+
+            if (isset($body['status']) && strtolower((string) $body['status']) === 'failed') {
+                throw new \Exception('CloudNS update record failed: ' . json_encode($body));
+            }
+
+            return;
+        }
+
+        $addResponse = Http::asForm()
+            ->timeout(60)
+            ->post('https://api.cloudns.net/dns/add-record.json', [
+                'auth-id' => $authId,
+                'auth-password' => $authPassword,
+                'domain-name' => $zone,
+                'record-type' => 'A',
+                'host' => $subdomain,
+                'record' => $serverIp,
+                'ttl' => 300,
+            ]);
+
+        if (!$addResponse->successful()) {
+            throw new \Exception('CloudNS add record failed: ' . $addResponse->body());
+        }
+
+        $body = $addResponse->json();
+
+        if (isset($body['status']) && strtolower((string) $body['status']) === 'failed') {
+            throw new \Exception('CloudNS add record failed: ' . json_encode($body));
+        }
+    }
+
+    private function connectServerSsh(Server $server): SSH2
+    {
+        $credentials = $this->serverCredentials($server);
+
+        $host = $this->cleanHost((string) $credentials['host']);
+        $port = (int) ($server->ssh_port ?? 22);
+        $username = trim((string) ($credentials['username'] ?: 'root'));
+        $password = trim((string) ($credentials['password'] ?? ''));
+
+        if (!$host) {
+            throw new \Exception('SSH host is missing.');
+        }
+
+        if (!$username) {
+            throw new \Exception('SSH username is missing.');
+        }
+
+        if (!$password) {
+            throw new \Exception('SSH password is missing.');
+        }
+
+        $ssh = new SSH2($host, $port);
+        $ssh->setTimeout(60);
+
+        if (!$ssh->login($username, $password)) {
+            throw new \Exception('SSH login failed for server ' . $host . ':' . $port . ' as ' . $username);
+        }
+
+        return $ssh;
+    }
+
+    private function runRemoteCommand(SSH2 $ssh, string $command, int $timeout = 120): string
+    {
+        $ssh->setTimeout($timeout);
+
+        $wrapped = 'bash -lc ' . $this->shellArg($command);
+
+        $output = $ssh->exec($wrapped);
+        $exitStatus = $ssh->getExitStatus();
+
+        if ($exitStatus !== 0 && $exitStatus !== null) {
+            throw new \Exception(trim((string) $output) ?: 'Remote command failed.');
+        }
+
+        return trim((string) $output);
+    }
+
+    private function shellArg(string $value): string
+    {
+        return "'" . str_replace("'", "'\"'\"'", $value) . "'";
+    }
+
+    private function fetchCpanelAccounts(Server $server): array
+    {
+        $credentials = $this->serverCredentials($server);
+
+        $host = $credentials['host'];
+        $username = $credentials['username'];
+        $password = $credentials['password'];
+
+        if (!$host) {
+            throw new \Exception('Server host/IP is missing.');
+        }
+
+        if (!$username) {
+            throw new \Exception('WHM username is missing. Add whm_username, root_username, username, or user on server record.');
+        }
+
+        if (!$password) {
+            throw new \Exception('WHM/root/reseller password is missing. Add whm_password, root_password, ssh_password, or password on server record.');
+        }
+
+        $host = $this->cleanHost($host);
+
+        $url = 'https://' . $host . ':2087/json-api/listaccts';
+
+        $response = Http::withoutVerifying()
+            ->timeout(60)
+            ->acceptJson()
+            ->withOptions([
+                'verify' => false,
+                'connect_timeout' => 20,
+            ])
+            ->withBasicAuth($username, $password)
+            ->get($url, [
+                'api.version' => 1,
+            ]);
+
+        if (!$response->successful()) {
+            throw new \Exception(
+                'WHM username/password failed. HTTP ' .
+                $response->status() .
+                ' - ' .
+                Str::limit($response->body(), 700)
+            );
+        }
+
+        $json = $response->json();
         $metadataResult = data_get($json, 'metadata.result');
 
         if ((string) $metadataResult === '0') {
             throw new \Exception(
-                'WHM SSH command denied: ' .
+                'WHM API denied username/password request: ' .
                 (
                     data_get($json, 'metadata.reason')
                     ?: data_get($json, 'cpanelresult.error')
-                    ?: data_get($json, 'error')
+                    ?: data_get($json, 'cpanelresult.data.reason')
                     ?: 'Access denied'
                 )
             );
         }
 
-        $rawAccounts = data_get($json, 'data.acct');
+        $rawAccounts = data_get($json, 'data.acct', []);
 
         if (!is_array($rawAccounts)) {
-            $rawAccounts = data_get($json, 'acct', []);
+            throw new \Exception('No cPanel accounts found from WHM response.');
         }
 
-        if (!is_array($rawAccounts)) {
-            throw new \Exception('WHM SSH command returned invalid account format.');
-        }
-
-        return $this->mapWhmAccounts($rawAccounts, $server);
-    }
-
-    private function fetchCpanelAccountsViaHttp(
-        string $host,
-        string $username,
-        string $password,
-        Server $server
-    ): array {
-        $cleanHost = $this->cleanHost($host);
-
-        $attempts = [
-            'https://' . $cleanHost . ':2087/json-api/listaccts',
-            'http://' . $cleanHost . ':2086/json-api/listaccts',
-        ];
-
-        $lastStatus = null;
-        $lastBody = null;
-
-        foreach ($attempts as $url) {
-            $response = Http::withoutVerifying()
-                ->timeout(60)
-                ->acceptJson()
-                ->withOptions([
-                    'verify' => false,
-                    'connect_timeout' => 20,
-                ])
-                ->withBasicAuth($username, $password)
-                ->get($url, [
-                    'api.version' => 1,
-                ]);
-
-            $lastStatus = $response->status();
-            $lastBody = $response->body();
-
-            if (!$response->successful()) {
-                continue;
-            }
-
-            $json = $response->json();
-
-            $metadataResult = data_get($json, 'metadata.result');
-            $cpanelResult = data_get($json, 'cpanelresult.data.result');
-
-            if ((string) $metadataResult === '0' || (string) $cpanelResult === '0') {
-                $lastBody = $response->body();
-                continue;
-            }
-
-            $rawAccounts = data_get($json, 'data.acct');
-
-            if (!is_array($rawAccounts)) {
-                $rawAccounts = data_get($json, 'acct', []);
-            }
-
-            if (!is_array($rawAccounts)) {
-                throw new \Exception('WHM HTTP connected but account list format is invalid.');
-            }
-
-            return $this->mapWhmAccounts($rawAccounts, $server);
-        }
-
-        throw new \Exception(
-            'WHM username/password failed. HTTP ' .
-            $lastStatus .
-            ' - ' .
-            Str::limit((string) $lastBody, 700)
-        );
-    }
-
-    private function mapWhmAccounts(array $rawAccounts, Server $server): array
-    {
         return collect($rawAccounts)
             ->map(function ($account) use ($server) {
                 $user = $account['user'] ?? null;
@@ -706,11 +1159,12 @@ BASH;
                 $framework = $this->guessFrameworkFromAccount($domain);
                 $defaults = $this->frameworkDefaults($framework, $user, $domain);
                 $dbType = $this->guessDbTypeFromFramework($framework);
+                $codeEditorUrl = 'https://' . $this->codeEditorDomainForUsername($user);
 
                 return [
                     'server_id' => $server->id,
                     'server_name' => $server->name ?? null,
-                    'server_host' => $server->host ?? null,
+                    'server_host' => $server->host ?? $server->hostname ?? $server->ip_address ?? null,
 
                     'user' => $user,
                     'name' => $account['owner'] ?? $user,
@@ -731,9 +1185,9 @@ BASH;
                     'build_command' => $defaults['build_command'],
                     'deploy_command' => $defaults['deploy_command'],
                     'start_command' => $defaults['start_command'],
+                    'code_editor_url' => $codeEditorUrl,
 
                     'developer_portal_access' => true,
-                    'portal_access_enabled' => true,
 
                     'can_view_files' => true,
                     'can_clear_cache' => in_array($framework, ['laravel', 'php', 'wordpress'], true),
@@ -760,11 +1214,6 @@ BASH;
             ->toArray();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate One cPanel Login
-    |--------------------------------------------------------------------------
-    */
     private function fetchSingleCpanelAccountInfo(string $cpanelUrl, string $username, string $password): array
     {
         $cpanelUrl = rtrim($cpanelUrl, '/');
@@ -782,7 +1231,6 @@ BASH;
         }
 
         $json = $response->json();
-
         $status = data_get($json, 'status');
 
         if ((string) $status === '0') {
@@ -799,31 +1247,114 @@ BASH;
         ];
     }
 
-    private function getServerPassword(Server $server): ?string
+    private function serverCredentials(Server $server): array
     {
-        $password = $server->password ?? null;
+        $host = $this->serverValue($server, [
+            'host',
+            'hostname',
+            'ip',
+            'ip_address',
+            'server_ip',
+        ]);
 
-        if (!$password) {
+        $username = $this->serverValue($server, [
+            'whm_username',
+            'root_username',
+            'username',
+            'user',
+            'ssh_username',
+        ]);
+
+        $password = $this->serverSecret($server, [
+            'whm_password',
+            'root_password',
+            'password',
+            'ssh_password',
+        ]);
+
+        return [
+            'host' => $host ? trim($host) : null,
+            'username' => trim($username ?: 'root'),
+            'password' => $password ? trim($password) : null,
+        ];
+    }
+
+    private function serverValue(Server $server, array $columns): ?string
+    {
+        foreach ($columns as $column) {
+            if (Schema::hasColumn($server->getTable(), $column) && !empty($server->{$column})) {
+                return trim((string) $server->{$column});
+            }
+        }
+
+        return null;
+    }
+
+    private function serverSecret(Server $server, array $columns): ?string
+    {
+        foreach ($columns as $column) {
+            if (!Schema::hasColumn($server->getTable(), $column) || empty($server->{$column})) {
+                continue;
+            }
+
+            $value = (string) $server->{$column};
+
+            try {
+                return Crypt::decryptString($value);
+            } catch (\Throwable $e) {
+                try {
+                    return decrypt($value);
+                } catch (\Throwable $e2) {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function serverPublicIp(Server $server): ?string
+    {
+        $value = $this->serverValue($server, [
+            'public_ip',
+            'ip_address',
+            'server_ip',
+            'ip',
+            'host',
+            'hostname',
+        ]);
+
+        if (!$value) {
             return null;
         }
 
-        try {
-            return decrypt($password);
-        } catch (\Throwable $e) {
-            try {
-                return Crypt::decryptString($password);
-            } catch (\Throwable $e2) {
-                return $password;
-            }
+        $host = $this->cleanHost($value);
+
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return $host;
         }
+
+        $resolved = gethostbyname($host);
+
+        if ($resolved && $resolved !== $host && filter_var($resolved, FILTER_VALIDATE_IP)) {
+            return $resolved;
+        }
+
+        return null;
     }
 
     private function cpanelUrlFromServer(Server $server): string
     {
-        $host = $server->host ?? null;
+        $host = $this->serverValue($server, [
+            'host',
+            'hostname',
+            'ip',
+            'ip_address',
+            'server_ip',
+        ]);
 
         if (!$host) {
-            throw new \Exception('Server host is missing.');
+            throw new \Exception('Server host/IP is missing.');
         }
 
         $host = $this->cleanHost($host);
@@ -841,11 +1372,17 @@ BASH;
         return $host;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Developer Portal Access Helpers
-    |--------------------------------------------------------------------------
-    */
+    private function boolFromArray(array $array, string $key, bool $default = false): bool
+    {
+        if (!array_key_exists($key, $array)) {
+            return $default;
+        }
+
+        $value = $array[$key];
+
+        return in_array($value, [true, 1, '1', 'true', 'on', 'yes'], true);
+    }
+
     private function portalAccessPayload(bool $enabled): array
     {
         return [
@@ -853,44 +1390,20 @@ BASH;
             'developer_portal_access' => $enabled,
             'portal_access_enabled' => $enabled,
             'developer_portal_enabled' => $enabled,
-            'portal_disabled_at' => $enabled ? null : now(),
-            'portal_enabled_at' => $enabled ? now() : null,
         ];
     }
 
     private function developerPortalIsActive(DeveloperUser $developer): bool
     {
-        $table = $developer->getTable();
-
-        if (Schema::hasColumn($table, 'developer_portal_access')) {
-            return (bool) $developer->developer_portal_access;
-        }
-
-        if (Schema::hasColumn($table, 'portal_access_enabled')) {
-            return (bool) $developer->portal_access_enabled;
-        }
-
-        if (Schema::hasColumn($table, 'developer_portal_enabled')) {
-            return (bool) $developer->developer_portal_enabled;
-        }
-
-        return (bool) $developer->is_active;
+        return (bool) (
+            $developer->developer_portal_access
+            ?? $developer->portal_access_enabled
+            ?? $developer->developer_portal_enabled
+            ?? $developer->is_active
+            ?? false
+        );
     }
 
-    private function boolFromArray(array $array, string $key, bool $default = false): bool
-    {
-        if (!array_key_exists($key, $array)) {
-            return $default;
-        }
-
-        return filter_var($array[$key], FILTER_VALIDATE_BOOLEAN);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Frameworks
-    |--------------------------------------------------------------------------
-    */
     private function frameworkOptions(): array
     {
         return [
@@ -950,47 +1463,7 @@ BASH;
                 'start_command' => '',
             ],
 
-            'react' => [
-                'project_type' => 'frontend',
-                'project_root' => $publicHtml,
-                'build_command' => 'npm install && npm run build',
-                'deploy_command' => 'npm run build',
-                'start_command' => 'npm run dev',
-            ],
-
-            'vue' => [
-                'project_type' => 'frontend',
-                'project_root' => $publicHtml,
-                'build_command' => 'npm install && npm run build',
-                'deploy_command' => 'npm run build',
-                'start_command' => 'npm run dev',
-            ],
-
-            'angular' => [
-                'project_type' => 'frontend',
-                'project_root' => $publicHtml,
-                'build_command' => 'npm install && npm run build',
-                'deploy_command' => 'npm run build',
-                'start_command' => 'ng serve',
-            ],
-
-            'nextjs' => [
-                'project_type' => 'frontend',
-                'project_root' => $publicHtml,
-                'build_command' => 'npm install && npm run build',
-                'deploy_command' => 'npm run build',
-                'start_command' => 'npm start',
-            ],
-
-            'nuxt' => [
-                'project_type' => 'frontend',
-                'project_root' => $publicHtml,
-                'build_command' => 'npm install && npm run build',
-                'deploy_command' => 'npm run build',
-                'start_command' => 'npm run preview',
-            ],
-
-            'svelte' => [
+            'react', 'vue', 'angular', 'nextjs', 'nuxt', 'svelte' => [
                 'project_type' => 'frontend',
                 'project_root' => $publicHtml,
                 'build_command' => 'npm install && npm run build',
@@ -1006,7 +1479,7 @@ BASH;
                 'start_command' => 'npm start',
             ],
 
-            'python' => [
+            'python', 'flask', 'django', 'fastapi' => [
                 'project_type' => 'python',
                 'project_root' => $publicHtml,
                 'build_command' => 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
@@ -1014,39 +1487,7 @@ BASH;
                 'start_command' => 'python3 app.py',
             ],
 
-            'flask' => [
-                'project_type' => 'python',
-                'project_root' => $publicHtml,
-                'build_command' => 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-                'deploy_command' => './venv/bin/pip install -r requirements.txt',
-                'start_command' => './venv/bin/flask run --host=0.0.0.0',
-            ],
-
-            'django' => [
-                'project_type' => 'python',
-                'project_root' => $publicHtml,
-                'build_command' => 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-                'deploy_command' => './venv/bin/python manage.py migrate && ./venv/bin/python manage.py collectstatic --noinput',
-                'start_command' => './venv/bin/python manage.py runserver 0.0.0.0:8000',
-            ],
-
-            'fastapi' => [
-                'project_type' => 'python',
-                'project_root' => $publicHtml,
-                'build_command' => 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
-                'deploy_command' => './venv/bin/pip install -r requirements.txt',
-                'start_command' => './venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000',
-            ],
-
-            'java' => [
-                'project_type' => 'java',
-                'project_root' => $publicHtml,
-                'build_command' => './mvnw clean package -DskipTests',
-                'deploy_command' => './mvnw clean package -DskipTests',
-                'start_command' => 'java -jar target/app.jar',
-            ],
-
-            'springboot' => [
+            'java', 'springboot' => [
                 'project_type' => 'java',
                 'project_root' => $publicHtml,
                 'build_command' => './mvnw clean package -DskipTests',
@@ -1184,84 +1625,6 @@ BASH;
         return in_array($dbType, ['postgresql', 'pgsql', 'postgres'], true) ? '5432' : '3306';
     }
 
-    public function updateSettings(Request $request, DeveloperUser $developer)
-    {
-        $data = $request->validate([
-            'framework' => ['nullable', 'string', 'max:100'],
-            'project_root' => ['nullable', 'string', 'max:255'],
-            'code_editor_url' => ['nullable', 'string', 'max:255'],
-
-            'build_command' => ['nullable', 'string', 'max:500'],
-            'deploy_command' => ['nullable', 'string', 'max:500'],
-            'start_command' => ['nullable', 'string', 'max:500'],
-
-            'developer_portal_access' => ['nullable'],
-
-            'db_type' => ['nullable', 'string', 'max:50'],
-            'db_host' => ['nullable', 'string', 'max:255'],
-            'db_username' => ['nullable', 'string', 'max:255'],
-            'db_name' => ['nullable', 'string', 'max:255'],
-
-            'can_view_files' => ['nullable'],
-            'can_edit_files' => ['nullable'],
-            'can_delete_files' => ['nullable'],
-            'can_git_pull' => ['nullable'],
-            'can_clear_cache' => ['nullable'],
-            'can_composer' => ['nullable'],
-            'can_npm' => ['nullable'],
-            'can_run_build' => ['nullable'],
-            'can_run_python' => ['nullable'],
-            'can_restart_app' => ['nullable'],
-            'can_mysql' => ['nullable'],
-            'can_postgresql' => ['nullable'],
-        ]);
-
-        $enabled = $request->boolean('developer_portal_access');
-
-        $payload = [
-            'framework' => $data['framework'] ?? $developer->framework,
-            'project_root' => $data['project_root'] ?? $developer->project_root,
-            'allowed_project_path' => $data['project_root'] ?? $developer->allowed_project_path,
-            'code_editor_url' => $data['code_editor_url'] ?? $developer->code_editor_url,
-
-            'build_command' => $data['build_command'] ?? null,
-            'deploy_command' => $data['deploy_command'] ?? null,
-            'start_command' => $data['start_command'] ?? null,
-
-            'is_active' => $enabled,
-            'developer_portal_access' => $enabled,
-            'portal_access_enabled' => $enabled,
-            'developer_portal_enabled' => $enabled,
-
-            'db_type' => $data['db_type'] ?? null,
-            'db_host' => $data['db_host'] ?? null,
-            'db_username' => $data['db_username'] ?? null,
-            'db_name' => $data['db_name'] ?? null,
-
-            'can_view_files' => $request->boolean('can_view_files'),
-            'can_edit_files' => $request->boolean('can_edit_files'),
-            'can_delete_files' => $request->boolean('can_delete_files'),
-            'can_git_pull' => $request->boolean('can_git_pull'),
-            'can_clear_cache' => $request->boolean('can_clear_cache'),
-            'can_composer' => $request->boolean('can_composer'),
-            'can_npm' => $request->boolean('can_npm'),
-            'can_run_build' => $request->boolean('can_run_build'),
-            'can_run_python' => $request->boolean('can_run_python'),
-            'can_restart_app' => $request->boolean('can_restart_app'),
-            'can_mysql' => $request->boolean('can_mysql'),
-            'can_postgresql' => $request->boolean('can_postgresql'),
-        ];
-
-        $developer->update($this->filterDeveloperColumns($payload));
-
-        return back()->with('success', 'Developer settings updated successfully.');
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Prevent SQL error if some columns are missing from developer_users table
-    |--------------------------------------------------------------------------
-    */
     private function filterDeveloperColumns(array $payload): array
     {
         $table = (new DeveloperUser())->getTable();
