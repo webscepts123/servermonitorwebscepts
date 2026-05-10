@@ -675,6 +675,9 @@ Route::middleware(['auth'])->group(function () {
             Route::put('/{developer}/settings', [DeveloperCpanelImportController::class, 'updateSettings'])
             ->name('settings.update');
 
+            Route::post('/developers/{developer}/code-editor/setup', [DeveloperCpanelImportController::class, 'setupCodeEditor'])
+            ->name('developers.code-editor.setup');
+
             Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
                 ->name('destroy');
         });
