@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DeveloperUser;
 use App\Models\Server;
 use App\Services\SmsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use phpseclib3\Net\SSH2;
 
 class CpanelAccountController extends Controller
@@ -36,27 +40,30 @@ class CpanelAccountController extends Controller
     | CREATE ACCOUNT PAGE
     |--------------------------------------------------------------------------
     */
-    public function create(\App\Models\Server $server)
+    public function create(Server $server)
     {
         $error = null;
         $packages = [];
         $ips = [];
-    
+        $frameworks = $this->frameworkOptions();
+
         try {
             $whm = $this->whmRequest($server, 'listpkgs');
-    
+
             if (!empty($whm['package'])) {
                 $packages = $whm['package'];
             } elseif (!empty($whm['data']['pkg'])) {
                 $packages = $whm['data']['pkg'];
+            } elseif (!empty($whm['data']['packages'])) {
+                $packages = $whm['data']['packages'];
             }
         } catch (\Throwable $e) {
             $error = 'Unable to load packages: ' . $e->getMessage();
         }
-    
+
         try {
             $ipResponse = $this->whmRequest($server, 'listips');
-    
+
             if (!empty($ipResponse['data']['ip'])) {
                 $ips = $ipResponse['data']['ip'];
             } elseif (!empty($ipResponse['ip'])) {
@@ -65,14 +72,14 @@ class CpanelAccountController extends Controller
                 $ips = $ipResponse['data']['ips'];
             }
         } catch (\Throwable $e) {
-            // Keep page working even if WHM cannot return IP list.
             $ips = [];
         }
-    
+
         return view('cpanel.accounts.create', compact(
             'server',
             'packages',
             'ips',
+            'frameworks',
             'error'
         ));
     }
@@ -89,10 +96,50 @@ class CpanelAccountController extends Controller
             'username' => 'required|string|max:16',
             'password' => 'required|string|min:8',
             'email' => 'nullable|email|max:255',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Blade uses package. Keep plan too for old forms.
+            |--------------------------------------------------------------------------
+            */
+            'package' => 'nullable|string|max:255',
             'plan' => 'nullable|string|max:255',
+            'ip' => 'nullable|string|max:255',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Developer Codes / Visual Editor
+            |--------------------------------------------------------------------------
+            */
+            'create_developer_login' => 'nullable',
+            'developer_portal_access' => 'nullable',
+            'framework' => 'nullable|string|max:100',
+            'project_root' => 'nullable|string|max:255',
+
+            'can_view_files' => 'nullable',
+            'can_edit_files' => 'nullable',
+            'can_delete_files' => 'nullable',
+            'can_git_pull' => 'nullable',
+            'can_clear_cache' => 'nullable',
+            'can_composer' => 'nullable',
+            'can_npm' => 'nullable',
+            'can_run_build' => 'nullable',
+            'can_run_python' => 'nullable',
+            'can_restart_app' => 'nullable',
+            'can_mysql' => 'nullable',
+            'can_postgresql' => 'nullable',
+
+            'db_type' => 'nullable|string|max:50',
+            'db_host' => 'nullable|string|max:255',
+            'db_port' => 'nullable|string|max:20',
+            'db_username' => 'nullable|string|max:255',
+            'db_password' => 'nullable|string|max:255',
+            'db_name' => 'nullable|string|max:255',
         ]);
 
         try {
+            $package = $data['package'] ?? $data['plan'] ?? null;
+
             $params = [
                 'domain' => $data['domain'],
                 'username' => $data['username'],
@@ -100,11 +147,50 @@ class CpanelAccountController extends Controller
                 'contactemail' => $data['email'] ?? '',
             ];
 
-            if (!empty($data['plan'])) {
-                $params['plan'] = $data['plan'];
+            if (!empty($package)) {
+                $params['plan'] = $package;
+            }
+
+            if (!empty($data['ip'])) {
+                $params['ip'] = $data['ip'];
             }
 
             $this->whmRequest($server, 'createacct', $params);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Save real cPanel password for Visual Code Editor File Manager API
+            |--------------------------------------------------------------------------
+            | This is the important part for /codeditor.
+            |--------------------------------------------------------------------------
+            */
+            if ($request->boolean('create_developer_login', true)) {
+                $developer = $this->createOrUpdateDeveloperFromCpanelAccount(
+                    $server,
+                    $request,
+                    $data,
+                    $package
+                );
+
+                return redirect()
+                    ->route('servers.cpanel.index', $server)
+                    ->with('success', 'cPanel account created and Developer Codes login saved successfully.')
+                    ->with('created_logins', [
+                        [
+                            'name' => $developer->name ?? $data['username'],
+                            'login' => $data['username'],
+                            'email' => $data['email'] ?? '',
+                            'domain' => $data['domain'],
+                            'framework' => $data['framework'] ?? 'custom',
+                            'project_root' => $developer->project_root ?? '/home/' . $data['username'] . '/public_html',
+                            'portal_access' => $request->boolean('developer_portal_access', true) ? 'Enabled' : 'Disabled',
+                            'password' => $data['password'],
+                            'url' => 'https://developercodes.webscepts.com/login',
+                            'codeditor' => 'https://developercodes.webscepts.com/codeditor',
+                            'code_editor_url' => 'Monaco cPanel File Manager API',
+                        ],
+                    ]);
+            }
 
             return redirect()
                 ->route('servers.cpanel.index', $server)
@@ -162,7 +248,22 @@ class CpanelAccountController extends Controller
                 'password' => $data['password'],
             ]);
 
-            return back()->with('success', 'Password updated successfully.');
+            /*
+            |--------------------------------------------------------------------------
+            | Also update Developer Codes saved cPanel password
+            |--------------------------------------------------------------------------
+            */
+            $developer = DeveloperUser::where('cpanel_username', $user)->first();
+
+            if ($developer) {
+                $developer->update($this->filterDeveloperColumns([
+                    'temporary_password' => Crypt::encryptString($data['password']),
+                    'cpanel_password' => Crypt::encryptString($data['password']),
+                    'ssh_username' => $user,
+                ]));
+            }
+
+            return back()->with('success', 'Password updated successfully and Developer Codes cPanel password saved.');
 
         } catch (\Throwable $e) {
             return back()->with('error', 'Password update failed: ' . $e->getMessage());
@@ -353,6 +454,116 @@ class CpanelAccountController extends Controller
                 return back()->with('error', 'WordPress auto login failed: ' . $e2->getMessage());
             }
         }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREATE / UPDATE DEVELOPER CODES LOGIN
+    |--------------------------------------------------------------------------
+    */
+    private function createOrUpdateDeveloperFromCpanelAccount(
+        Server $server,
+        Request $request,
+        array $data,
+        ?string $package = null
+    ): DeveloperUser {
+        $username = trim($data['username']);
+        $domain = trim($data['domain']);
+        $email = trim($data['email'] ?? '') ?: $username . '@developer.local';
+        $password = $data['password'];
+
+        $framework = trim($data['framework'] ?? 'custom') ?: 'custom';
+        $frameworkConfig = $this->frameworkDefaults($framework, $username, $domain);
+
+        $projectRoot = trim($data['project_root'] ?? '')
+            ?: $frameworkConfig['project_root']
+            ?: '/home/' . $username . '/public_html';
+
+        $dbType = strtolower(trim($data['db_type'] ?? 'mysql'));
+
+        if (!in_array($dbType, ['mysql', 'postgresql', 'pgsql', 'postgres'], true)) {
+            $dbType = 'mysql';
+        }
+
+        if (in_array($dbType, ['pgsql', 'postgres'], true)) {
+            $dbType = 'postgresql';
+        }
+
+        $portalAccess = $request->boolean('developer_portal_access', true);
+
+        $payload = [
+            'server_id' => $server->id,
+
+            'name' => $username,
+            'email' => $email,
+            'contact_email' => $email,
+            'cpanel_username' => $username,
+            'cpanel_domain' => $domain,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Developer portal login password
+            |--------------------------------------------------------------------------
+            | Keep same as cPanel password because user wants cPanel/API access available.
+            |--------------------------------------------------------------------------
+            */
+            'password' => bcrypt($password),
+            'temporary_password' => Crypt::encryptString($password),
+            'cpanel_password' => Crypt::encryptString($password),
+            'password_must_change' => false,
+
+            'role' => 'developer',
+            'ssh_username' => $username,
+            'allowed_project_path' => $projectRoot,
+
+            'project_type' => $frameworkConfig['project_type'],
+            'framework' => $framework,
+            'project_root' => $projectRoot,
+            'build_command' => $frameworkConfig['build_command'],
+            'deploy_command' => $frameworkConfig['deploy_command'],
+            'start_command' => $frameworkConfig['start_command'],
+
+            /*
+            |--------------------------------------------------------------------------
+            | Monaco Visual Editor does not need code-server URL
+            |--------------------------------------------------------------------------
+            */
+            'code_editor_url' => 'https://developercodes.webscepts.com/codeditor',
+            'vscode_url' => 'https://developercodes.webscepts.com/codeditor',
+
+            'package' => $package,
+
+            'can_view_files' => $request->boolean('can_view_files', true),
+            'can_edit_files' => $request->boolean('can_edit_files', true),
+            'can_delete_files' => $request->boolean('can_delete_files', false),
+
+            'can_git_pull' => $request->boolean('can_git_pull'),
+            'can_clear_cache' => $request->boolean('can_clear_cache', true),
+            'can_composer' => $request->boolean('can_composer'),
+            'can_npm' => $request->boolean('can_npm'),
+            'can_run_build' => $request->boolean('can_run_build'),
+            'can_run_python' => $request->boolean('can_run_python'),
+            'can_restart_app' => $request->boolean('can_restart_app'),
+
+            'can_mysql' => $request->boolean('can_mysql') || $dbType === 'mysql',
+            'can_postgresql' => $request->boolean('can_postgresql') || $dbType === 'postgresql',
+
+            'db_type' => $dbType,
+            'db_host' => $data['db_host'] ?? 'localhost',
+            'db_port' => $data['db_port'] ?? $this->defaultDbPort($dbType),
+            'db_username' => $data['db_username'] ?? $username,
+            'db_password' => !empty($data['db_password']) ? Crypt::encryptString($data['db_password']) : null,
+            'db_name' => $data['db_name'] ?? '',
+        ];
+
+        $payload = array_merge($payload, $this->portalAccessPayload($portalAccess));
+
+        return DeveloperUser::updateOrCreate(
+            [
+                'cpanel_username' => $username,
+            ],
+            $this->filterDeveloperColumns($payload)
+        );
     }
 
     /*
@@ -728,5 +939,171 @@ class CpanelAccountController extends Controller
         } catch (\Throwable $e) {
             return $server->password;
         }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DEVELOPER HELPERS
+    |--------------------------------------------------------------------------
+    */
+    private function portalAccessPayload(bool $enabled): array
+    {
+        return [
+            'is_active' => $enabled,
+            'developer_portal_access' => $enabled,
+            'portal_access_enabled' => $enabled,
+            'developer_portal_enabled' => $enabled,
+        ];
+    }
+
+    private function frameworkOptions(): array
+    {
+        return [
+            'custom' => 'Custom / Other',
+            'html' => 'Static HTML / CSS / JS',
+            'php' => 'PHP',
+            'wordpress' => 'WordPress',
+            'laravel' => 'Laravel',
+            'react' => 'React.js',
+            'vue' => 'Vue.js',
+            'angular' => 'Angular',
+            'node' => 'Node.js / Express',
+            'nextjs' => 'Next.js',
+            'nuxt' => 'Nuxt.js',
+            'svelte' => 'Svelte',
+            'python' => 'Python',
+            'flask' => 'Flask',
+            'django' => 'Django',
+            'fastapi' => 'FastAPI',
+            'java' => 'Java',
+            'springboot' => 'Spring Boot',
+            'dotnet' => '.NET',
+            'ruby' => 'Ruby / Rails',
+            'go' => 'Go',
+        ];
+    }
+
+    private function frameworkDefaults(string $framework, ?string $user = null, ?string $domain = null): array
+    {
+        $framework = strtolower(trim($framework ?: 'custom'));
+
+        $home = $user ? '/home/' . $user : base_path();
+        $publicHtml = $home . '/public_html';
+
+        return match ($framework) {
+            'laravel' => [
+                'project_type' => 'php',
+                'project_root' => $publicHtml,
+                'build_command' => 'composer install --no-dev --optimize-autoloader && php artisan optimize:clear',
+                'deploy_command' => 'php artisan migrate --force && php artisan optimize',
+                'start_command' => '',
+            ],
+
+            'wordpress' => [
+                'project_type' => 'cms',
+                'project_root' => $publicHtml,
+                'build_command' => '',
+                'deploy_command' => '',
+                'start_command' => '',
+            ],
+
+            'php' => [
+                'project_type' => 'php',
+                'project_root' => $publicHtml,
+                'build_command' => 'composer install --no-dev',
+                'deploy_command' => '',
+                'start_command' => '',
+            ],
+
+            'react', 'vue', 'angular', 'nextjs', 'nuxt', 'svelte' => [
+                'project_type' => 'frontend',
+                'project_root' => $publicHtml,
+                'build_command' => 'npm install && npm run build',
+                'deploy_command' => 'npm run build',
+                'start_command' => 'npm run dev',
+            ],
+
+            'node' => [
+                'project_type' => 'node',
+                'project_root' => $publicHtml,
+                'build_command' => 'npm install',
+                'deploy_command' => 'npm install --production',
+                'start_command' => 'npm start',
+            ],
+
+            'python', 'flask', 'django', 'fastapi' => [
+                'project_type' => 'python',
+                'project_root' => $publicHtml,
+                'build_command' => 'python3 -m venv venv && ./venv/bin/pip install -r requirements.txt',
+                'deploy_command' => './venv/bin/pip install -r requirements.txt',
+                'start_command' => 'python3 app.py',
+            ],
+
+            'java', 'springboot' => [
+                'project_type' => 'java',
+                'project_root' => $publicHtml,
+                'build_command' => './mvnw clean package -DskipTests',
+                'deploy_command' => './mvnw clean package -DskipTests',
+                'start_command' => 'java -jar target/*.jar',
+            ],
+
+            'dotnet' => [
+                'project_type' => 'dotnet',
+                'project_root' => $publicHtml,
+                'build_command' => 'dotnet restore && dotnet build',
+                'deploy_command' => 'dotnet publish -c Release',
+                'start_command' => 'dotnet run',
+            ],
+
+            'ruby' => [
+                'project_type' => 'ruby',
+                'project_root' => $publicHtml,
+                'build_command' => 'bundle install',
+                'deploy_command' => 'bundle install --deployment',
+                'start_command' => 'bundle exec rails server',
+            ],
+
+            'go' => [
+                'project_type' => 'go',
+                'project_root' => $publicHtml,
+                'build_command' => 'go mod download && go build',
+                'deploy_command' => 'go build',
+                'start_command' => './app',
+            ],
+
+            'html' => [
+                'project_type' => 'static',
+                'project_root' => $publicHtml,
+                'build_command' => '',
+                'deploy_command' => '',
+                'start_command' => '',
+            ],
+
+            default => [
+                'project_type' => 'custom',
+                'project_root' => $publicHtml,
+                'build_command' => '',
+                'deploy_command' => '',
+                'start_command' => '',
+            ],
+        };
+    }
+
+    private function defaultDbPort(string $dbType): string
+    {
+        $dbType = strtolower($dbType);
+
+        return in_array($dbType, ['postgresql', 'pgsql', 'postgres'], true) ? '5432' : '3306';
+    }
+
+    private function filterDeveloperColumns(array $payload): array
+    {
+        $table = (new DeveloperUser())->getTable();
+
+        return collect($payload)
+            ->filter(function ($value, $column) use ($table) {
+                return Schema::hasColumn($table, $column);
+            })
+            ->toArray();
     }
 }
