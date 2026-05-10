@@ -394,10 +394,9 @@ class DeveloperFileEditorController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | Method 1: WHM /json-api/cpanel with token/password.
+            | Method 1: WHM cPanel API with WHM API token/password.
             |--------------------------------------------------------------------------
             */
-
             try {
                 $query = array_merge([
                     'cpanel_jsonapi_user' => $cpanelUser,
@@ -406,12 +405,12 @@ class DeveloperFileEditorController extends Controller
                     'cpanel_jsonapi_func' => $function,
                 ], $params);
 
-                $response = $this->whmRequest(
+                $response = $this->whmApiRequest(
                     $host,
                     $whmUsername,
                     $whmPassword,
                     $whmToken,
-                    'https://' . $host . ':2087/json-api/cpanel',
+                    '/json-api/cpanel',
                     $query
                 );
 
@@ -428,11 +427,16 @@ class DeveloperFileEditorController extends Controller
                         return is_array($result) ? $result : [];
                     }
 
-                    $allErrors[] = $serverLabel . ': WHM cPanel API denied.';
+                    $reason = data_get($json, 'cpanelresult.error')
+                        ?: data_get($json, 'cpanelresult.data.reason')
+                        ?: data_get($json, 'metadata.reason')
+                        ?: 'Access denied';
+
+                    $allErrors[] = $serverLabel . ': WHM cPanel API denied - ' . $reason;
                 } elseif ($response) {
-                    $allErrors[] = $serverLabel . ': WHM cPanel API HTTP ' . $response->status();
+                    $allErrors[] = $serverLabel . ': WHM cPanel API HTTP ' . $response->status() . ' - ' . Str::limit($response->body(), 300);
                 } else {
-                    $allErrors[] = $serverLabel . ': WHM credentials missing.';
+                    $allErrors[] = $serverLabel . ': WHM token/password missing.';
                 }
             } catch (\Throwable $e) {
                 $allErrors[] = $serverLabel . ': WHM cPanel API exception - ' . $e->getMessage();
@@ -440,21 +444,21 @@ class DeveloperFileEditorController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | Method 2: WHM create_user_session.
+            | Method 2: WHM create_user_session with WHM API token/password.
             |--------------------------------------------------------------------------
             */
-
             try {
-                $sessionResponse = $this->whmRequest(
+                $sessionResponse = $this->whmApiRequest(
                     $host,
                     $whmUsername,
                     $whmPassword,
                     $whmToken,
-                    'https://' . $host . ':2087/json-api/create_user_session',
+                    '/json-api/create_user_session',
                     [
                         'api.version' => 1,
                         'user' => $cpanelUser,
                         'service' => 'cpaneld',
+                        'app' => 'FileManager',
                     ]
                 );
 
@@ -490,10 +494,17 @@ class DeveloperFileEditorController extends Controller
 
                         $allErrors[] = $serverLabel . ': WHM session URL missing cpsess token.';
                     } else {
-                        $allErrors[] = $serverLabel . ': WHM create_user_session denied.';
+                        $reason = data_get($sessionJson, 'metadata.reason')
+                            ?: data_get($sessionJson, 'cpanelresult.error')
+                            ?: data_get($sessionJson, 'cpanelresult.data.reason')
+                            ?: 'Access denied';
+
+                        $allErrors[] = $serverLabel . ': WHM create_user_session denied - ' . $reason;
                     }
                 } elseif ($sessionResponse) {
-                    $allErrors[] = $serverLabel . ': WHM create_user_session HTTP ' . $sessionResponse->status();
+                    $allErrors[] = $serverLabel . ': WHM create_user_session HTTP ' . $sessionResponse->status() . ' - ' . Str::limit($sessionResponse->body(), 300);
+                } else {
+                    $allErrors[] = $serverLabel . ': WHM token/password missing.';
                 }
             } catch (\Throwable $e) {
                 $allErrors[] = $serverLabel . ': WHM create_user_session exception - ' . $e->getMessage();
@@ -504,7 +515,6 @@ class DeveloperFileEditorController extends Controller
             | Method 3: Direct cPanel API token.
             |--------------------------------------------------------------------------
             */
-
             $cpanelToken = $this->developerCpanelToken($developer);
 
             if ($cpanelToken) {
@@ -543,6 +553,8 @@ class DeveloperFileEditorController extends Controller
                 } catch (\Throwable $e) {
                     $allErrors[] = $serverLabel . ': Direct cPanel API token exception - ' . $e->getMessage();
                 }
+            } else {
+                $allErrors[] = $serverLabel . ': No cPanel API token saved for developer.';
             }
 
             /*
@@ -550,7 +562,6 @@ class DeveloperFileEditorController extends Controller
             | Method 4: Direct cPanel Basic Auth.
             |--------------------------------------------------------------------------
             */
-
             $cpanelPassword = $this->developerCpanelPassword($developer);
 
             if ($cpanelPassword) {
@@ -593,7 +604,6 @@ class DeveloperFileEditorController extends Controller
                 | Method 5: Direct cPanel login session.
                 |--------------------------------------------------------------------------
                 */
-
                 try {
                     $cookieJar = new CookieJar();
 
@@ -631,7 +641,11 @@ class DeveloperFileEditorController extends Controller
 
                             $allErrors[] = $serverLabel . ': Direct cPanel login missing security_token.';
                         } else {
-                            $allErrors[] = $serverLabel . ': Direct cPanel login denied.';
+                            $reason = data_get($loginJson, 'message')
+                                ?: data_get($loginJson, 'reason')
+                                ?: 'Invalid cPanel login.';
+
+                            $allErrors[] = $serverLabel . ': Direct cPanel login denied - ' . $reason;
                         }
                     } else {
                         $allErrors[] = $serverLabel . ': Direct cPanel login failed HTTP ' . $loginResponse->status();
@@ -647,26 +661,22 @@ class DeveloperFileEditorController extends Controller
         throw new \Exception(
             'Cannot access cPanel File Manager API for user ' .
             $cpanelUser .
-            '. Save the real cPanel password or cPanel API token for this developer. Errors: ' .
+            '. The WHM API token/password cannot create a cPanel session, or no valid cPanel token/password is saved. Errors: ' .
             implode(' | ', array_slice($allErrors, -12))
         );
     }
 
-    private function whmRequest(
+    private function whmApiRequest(
         string $host,
         ?string $username,
         ?string $password,
         ?string $token,
-        string $url,
+        string $path,
         array $params = []
     ) {
-        $username = trim((string) $username);
+        $username = trim((string) $username) ?: 'root';
         $password = trim((string) $password);
         $token = trim((string) $token);
-
-        if (!$username) {
-            $username = 'root';
-        }
 
         $request = Http::withoutVerifying()
             ->timeout(60)
@@ -686,7 +696,7 @@ class DeveloperFileEditorController extends Controller
             return null;
         }
 
-        return $request->get($url, $params);
+        return $request->get('https://' . $host . ':2087' . $path, $params);
     }
 
     private function callCpanelSessionUapi(
@@ -941,16 +951,10 @@ class DeveloperFileEditorController extends Controller
             }
         }
 
-        $allServers = Server::latest()->get();
-
-        foreach ($allServers as $server) {
-            if (!$servers->contains('id', $server->id)) {
-                $servers->push($server);
-            }
-        }
-
         if ($servers->isEmpty()) {
-            throw new \Exception('Server record not found.');
+            throw new \Exception(
+                'Developer server_id is missing or invalid. Assign the correct server to this developer account.'
+            );
         }
 
         return $servers;
@@ -988,9 +992,9 @@ class DeveloperFileEditorController extends Controller
         ]);
 
         $token = $this->serverSecret($server, [
+            'whm_api_token',
             'whm_token',
             'api_token',
-            'whm_api_token',
             'access_hash',
         ]);
 
@@ -1193,6 +1197,6 @@ class DeveloperFileEditorController extends Controller
         $message = html_entity_decode($message);
         $message = preg_replace('/\s+/', ' ', $message);
 
-        return Str::limit(trim($message), 1200);
+        return Str::limit(trim($message), 1400);
     }
 }
