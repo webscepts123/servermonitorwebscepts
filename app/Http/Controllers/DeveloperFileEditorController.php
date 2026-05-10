@@ -14,15 +14,6 @@ use Illuminate\Support\Str;
 
 class DeveloperFileEditorController extends Controller
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Visual Code Editor Page
-    |--------------------------------------------------------------------------
-    | This editor does not use SSH, root, code-server, or proxy.
-    | It uses Monaco Editor + cPanel File Manager API.
-    |--------------------------------------------------------------------------
-    */
-
     public function index()
     {
         $developer = $this->developer();
@@ -40,28 +31,16 @@ class DeveloperFileEditorController extends Controller
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Load Folder Tree
-    |--------------------------------------------------------------------------
-    */
-
     public function tree(Request $request)
     {
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
         if (!$this->can($developer, 'can_view_files')) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'You do not have permission to view files.',
-            ], 403);
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to view files.'], 403);
         }
 
         try {
@@ -78,54 +57,37 @@ class DeveloperFileEditorController extends Controller
                 'check_for_leaf_directories' => 1,
             ]);
 
-            $items = $this->normalizeListFilesResponse($result, $dir);
-
             return response()->json([
                 'ok' => true,
                 'dir' => $dir,
                 'parent' => $this->parentDir($developer, $dir),
-                'items' => $items,
+                'items' => $this->normalizeListFilesResponse($result, $dir),
             ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'message' => $this->cleanErrorMessage($e->getMessage()),
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Read File
-    |--------------------------------------------------------------------------
-    */
 
     public function read(Request $request)
     {
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
         if (!$this->can($developer, 'can_view_files')) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'You do not have permission to read files.',
-            ], 403);
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to read files.'], 403);
         }
 
         try {
             $path = $this->safePath($developer, $request->input('path'));
 
             if ($this->isBlockedFile($path)) {
-                return response()->json([
-                    'ok' => false,
-                    'message' => 'This file is protected and cannot be opened.',
-                ], 403);
+                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be opened.'], 403);
             }
 
             [$dir, $file] = $this->splitPath($path);
@@ -138,7 +100,6 @@ class DeveloperFileEditorController extends Controller
             ]);
 
             $data = $result['data'] ?? [];
-
             $content = '';
 
             if (is_array($data)) {
@@ -162,33 +123,21 @@ class DeveloperFileEditorController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'message' => $this->cleanErrorMessage($e->getMessage()),
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Save File
-    |--------------------------------------------------------------------------
-    */
 
     public function save(Request $request)
     {
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
         if (!$this->can($developer, 'can_edit_files')) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'You do not have permission to save files.',
-            ], 403);
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to save files.'], 403);
         }
 
         try {
@@ -196,10 +145,7 @@ class DeveloperFileEditorController extends Controller
             $content = (string) $request->input('content', '');
 
             if ($this->isBlockedFile($path)) {
-                return response()->json([
-                    'ok' => false,
-                    'message' => 'This file is protected and cannot be saved.',
-                ], 403);
+                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be saved.'], 403);
             }
 
             [$dir, $file] = $this->splitPath($path);
@@ -221,33 +167,21 @@ class DeveloperFileEditorController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'message' => $this->cleanErrorMessage($e->getMessage()),
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Create File
-    |--------------------------------------------------------------------------
-    */
 
     public function createFile(Request $request)
     {
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
         if (!$this->can($developer, 'can_edit_files')) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'You do not have permission to create files.',
-            ], 403);
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to create files.'], 403);
         }
 
         try {
@@ -259,19 +193,13 @@ class DeveloperFileEditorController extends Controller
             $name = trim((string) $request->input('name'));
 
             if (!$name || str_contains($name, '/') || str_contains($name, '\\')) {
-                return response()->json([
-                    'ok' => false,
-                    'message' => 'Invalid file name.',
-                ], 422);
+                return response()->json(['ok' => false, 'message' => 'Invalid file name.'], 422);
             }
 
             $path = rtrim($dir, '/') . '/' . $name;
 
             if ($this->isBlockedFile($path)) {
-                return response()->json([
-                    'ok' => false,
-                    'message' => 'This file is protected and cannot be created.',
-                ], 403);
+                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be created.'], 403);
             }
 
             $this->cpanelUapi($developer, 'Fileman', 'save_file_content', [
@@ -291,33 +219,21 @@ class DeveloperFileEditorController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'message' => $this->cleanErrorMessage($e->getMessage()),
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Create Folder
-    |--------------------------------------------------------------------------
-    */
 
     public function createFolder(Request $request)
     {
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
         if (!$this->can($developer, 'can_edit_files')) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'You do not have permission to create folders.',
-            ], 403);
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to create folders.'], 403);
         }
 
         try {
@@ -329,10 +245,7 @@ class DeveloperFileEditorController extends Controller
             $name = trim((string) $request->input('name'));
 
             if (!$name || str_contains($name, '/') || str_contains($name, '\\')) {
-                return response()->json([
-                    'ok' => false,
-                    'message' => 'Invalid folder name.',
-                ], 422);
+                return response()->json(['ok' => false, 'message' => 'Invalid folder name.'], 422);
             }
 
             $path = rtrim($dir, '/') . '/' . $name;
@@ -350,43 +263,28 @@ class DeveloperFileEditorController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'message' => $this->cleanErrorMessage($e->getMessage()),
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Delete File
-    |--------------------------------------------------------------------------
-    */
 
     public function deleteFile(Request $request)
     {
         $developer = $this->developer();
 
         if (!$developer) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'Unauthenticated.',
-            ], 401);
+            return response()->json(['ok' => false, 'message' => 'Unauthenticated.'], 401);
         }
 
         if (!$this->can($developer, 'can_delete_files')) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'You do not have permission to delete files.',
-            ], 403);
+            return response()->json(['ok' => false, 'message' => 'You do not have permission to delete files.'], 403);
         }
 
         try {
             $path = $this->safePath($developer, $request->input('path'));
 
             if ($this->isBlockedFile($path)) {
-                return response()->json([
-                    'ok' => false,
-                    'message' => 'This file is protected and cannot be deleted.',
-                ], 403);
+                return response()->json(['ok' => false, 'message' => 'This file is protected and cannot be deleted.'], 403);
             }
 
             $this->cpanelUapi($developer, 'Fileman', 'trash_files', [
@@ -400,16 +298,10 @@ class DeveloperFileEditorController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'message' => $this->cleanErrorMessage($e->getMessage()),
             ], 500);
         }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Current Developer
-    |--------------------------------------------------------------------------
-    */
 
     private function developer(): ?DeveloperUser
     {
@@ -419,16 +311,6 @@ class DeveloperFileEditorController extends Controller
 
         return null;
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | cPanel UAPI Caller
-    |--------------------------------------------------------------------------
-    | Method 1: WHM /json-api/cpanel
-    | Method 2: WHM create_user_session
-    | Method 3: Direct cPanel UAPI with cPanel username/password
-    |--------------------------------------------------------------------------
-    */
 
     private function cpanelUapi(DeveloperUser $developer, string $module, string $function, array $params = []): array
     {
@@ -457,7 +339,7 @@ class DeveloperFileEditorController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Method 1: Direct WHM json-api/cpanel
+        | Method 1: WHM /json-api/cpanel
         |--------------------------------------------------------------------------
         */
 
@@ -493,9 +375,9 @@ class DeveloperFileEditorController extends Controller
                         return is_array($result) ? $result : [];
                     }
 
-                    $errors[] = 'WHM cPanel API denied: ' . Str::limit($response->body(), 500);
+                    $errors[] = 'WHM cPanel API denied';
                 } else {
-                    $errors[] = 'WHM cPanel API HTTP ' . $response->status() . ': ' . Str::limit($response->body(), 500);
+                    $errors[] = 'WHM cPanel API HTTP ' . $response->status();
                 }
             } catch (\Throwable $e) {
                 $errors[] = 'WHM cPanel API exception: ' . $e->getMessage();
@@ -506,7 +388,7 @@ class DeveloperFileEditorController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Method 2: WHM create_user_session then cPanel cpsess UAPI
+        | Method 2: WHM create_user_session
         |--------------------------------------------------------------------------
         */
 
@@ -535,7 +417,6 @@ class DeveloperFileEditorController extends Controller
 
                         if ($sessionUrl && preg_match('#/(cpsess[0-9]+)/#', $sessionUrl, $matches)) {
                             $cpsess = $matches[1];
-
                             $cookieJar = new CookieJar();
 
                             Http::withoutVerifying()
@@ -548,42 +429,22 @@ class DeveloperFileEditorController extends Controller
                                 ])
                                 ->get($sessionUrl);
 
-                            $apiUrl = 'https://' . $host . ':2083/' . $cpsess . '/execute/' . $module . '/' . $function;
-
-                            $apiResponse = Http::withoutVerifying()
-                                ->timeout(60)
-                                ->acceptJson()
-                                ->withOptions([
-                                    'verify' => false,
-                                    'cookies' => $cookieJar,
-                                    'connect_timeout' => 20,
-                                ])
-                                ->get($apiUrl, $params);
-
-                            if ($apiResponse->successful()) {
-                                $apiJson = $apiResponse->json();
-
-                                if ((string) data_get($apiJson, 'status') !== '0') {
-                                    return [
-                                        'status' => data_get($apiJson, 'status', 1),
-                                        'data' => data_get($apiJson, 'data', []),
-                                        'errors' => data_get($apiJson, 'errors', []),
-                                        'messages' => data_get($apiJson, 'messages', []),
-                                    ];
-                                }
-
-                                $errors[] = 'cPanel cpsess UAPI denied: ' . Str::limit($apiResponse->body(), 500);
-                            } else {
-                                $errors[] = 'cPanel cpsess UAPI HTTP ' . $apiResponse->status() . ': ' . Str::limit($apiResponse->body(), 500);
-                            }
-                        } else {
-                            $errors[] = 'Unable to extract cpsess token from WHM session URL.';
+                            return $this->callCpanelSessionUapi(
+                                $host,
+                                $cpsess,
+                                $cookieJar,
+                                $module,
+                                $function,
+                                $params
+                            );
                         }
+
+                        $errors[] = 'Unable to extract cpsess token from WHM session URL.';
                     } else {
-                        $errors[] = 'WHM create_user_session denied: ' . Str::limit($sessionResponse->body(), 500);
+                        $errors[] = 'WHM create_user_session denied';
                     }
                 } else {
-                    $errors[] = 'WHM create_user_session HTTP ' . $sessionResponse->status() . ': ' . Str::limit($sessionResponse->body(), 500);
+                    $errors[] = 'WHM create_user_session HTTP ' . $sessionResponse->status();
                 }
             } catch (\Throwable $e) {
                 $errors[] = 'WHM create_user_session exception: ' . $e->getMessage();
@@ -592,79 +453,187 @@ class DeveloperFileEditorController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | Method 3: Direct cPanel UAPI using saved cPanel password
+        | Method 3: Direct cPanel Basic Auth
         |--------------------------------------------------------------------------
         */
 
         $cpanelPassword = $this->developerCpanelPassword($developer);
 
-        if (!$cpanelPassword) {
-            throw new \Exception(
-                'Cannot access cPanel File Manager API. WHM API/session failed and no cPanel password is saved for user ' .
-                $cpanelUser .
-                '. Errors: ' . implode(' | ', $errors)
-            );
+        if ($cpanelPassword) {
+            try {
+                $directUrl = 'https://' . $host . ':2083/execute/' . $module . '/' . $function;
+
+                $directResponse = $this->cpanelRequest(
+                    Http::withoutVerifying()
+                        ->timeout(60)
+                        ->acceptJson()
+                        ->withOptions([
+                            'verify' => false,
+                            'connect_timeout' => 20,
+                        ])
+                        ->withBasicAuth($cpanelUser, $cpanelPassword),
+                    $directUrl,
+                    $params
+                );
+
+                if ($directResponse->successful()) {
+                    $directJson = $directResponse->json();
+
+                    if ((string) data_get($directJson, 'status') !== '0') {
+                        return [
+                            'status' => data_get($directJson, 'status', 1),
+                            'data' => data_get($directJson, 'data', []),
+                            'errors' => data_get($directJson, 'errors', []),
+                            'messages' => data_get($directJson, 'messages', []),
+                        ];
+                    }
+                }
+
+                $errors[] = 'Direct cPanel Basic Auth failed HTTP ' . $directResponse->status();
+            } catch (\Throwable $e) {
+                $errors[] = 'Direct cPanel Basic Auth exception: ' . $e->getMessage();
+            }
+        } else {
+            $errors[] = 'No real cPanel password saved.';
         }
 
-        try {
-            $directUrl = 'https://' . $host . ':2083/execute/' . $module . '/' . $function;
+        /*
+        |--------------------------------------------------------------------------
+        | Method 4: Direct cPanel login session.
+        |--------------------------------------------------------------------------
+        | This fixes HTTP 401 cPanel Login page when Basic Auth is blocked.
+        |--------------------------------------------------------------------------
+        */
 
-            $directResponse = Http::withoutVerifying()
+        if ($cpanelPassword) {
+            try {
+                $cookieJar = new CookieJar();
+
+                $loginResponse = Http::withoutVerifying()
+                    ->timeout(60)
+                    ->asForm()
+                    ->acceptJson()
+                    ->withOptions([
+                        'verify' => false,
+                        'cookies' => $cookieJar,
+                        'allow_redirects' => false,
+                        'connect_timeout' => 20,
+                    ])
+                    ->post('https://' . $host . ':2083/login/?login_only=1', [
+                        'user' => $cpanelUser,
+                        'pass' => $cpanelPassword,
+                    ]);
+
+                if (!$loginResponse->successful()) {
+                    $errors[] = 'Direct cPanel login failed HTTP ' . $loginResponse->status();
+                    throw new \Exception('Direct cPanel login failed.');
+                }
+
+                $loginJson = $loginResponse->json();
+
+                if ((int) data_get($loginJson, 'status') !== 1) {
+                    $errors[] = 'Direct cPanel login denied: ' . (
+                        data_get($loginJson, 'message')
+                        ?: data_get($loginJson, 'reason')
+                        ?: 'Invalid cPanel username/password.'
+                    );
+
+                    throw new \Exception('Direct cPanel login denied.');
+                }
+
+                $securityToken = data_get($loginJson, 'security_token');
+
+                if (!$securityToken) {
+                    $errors[] = 'Direct cPanel login did not return security_token.';
+                    throw new \Exception('Missing security_token.');
+                }
+
+                $securityToken = '/' . ltrim($securityToken, '/');
+
+                return $this->callCpanelSessionUapi(
+                    $host,
+                    trim($securityToken, '/'),
+                    $cookieJar,
+                    $module,
+                    $function,
+                    $params
+                );
+            } catch (\Throwable $e) {
+                $errors[] = 'Direct cPanel login session exception: ' . $e->getMessage();
+            }
+        }
+
+        throw new \Exception(
+            'Cannot access cPanel File Manager API for user ' .
+            $cpanelUser .
+            '. The saved password is not accepted by cPanel or WHM access is limited. Errors: ' .
+            implode(' | ', $errors)
+        );
+    }
+
+    private function callCpanelSessionUapi(
+        string $host,
+        string $token,
+        CookieJar $cookieJar,
+        string $module,
+        string $function,
+        array $params = []
+    ): array {
+        $token = trim($token, '/');
+        $apiUrl = 'https://' . $host . ':2083/' . $token . '/execute/' . $module . '/' . $function;
+
+        $apiResponse = $this->cpanelRequest(
+            Http::withoutVerifying()
                 ->timeout(60)
                 ->acceptJson()
                 ->withOptions([
                     'verify' => false,
+                    'cookies' => $cookieJar,
                     'connect_timeout' => 20,
-                ])
-                ->withBasicAuth($cpanelUser, $cpanelPassword)
-                ->get($directUrl, $params);
+                ]),
+            $apiUrl,
+            $params
+        );
 
-            if (!$directResponse->successful()) {
-                throw new \Exception(
-                    'Direct cPanel UAPI failed. HTTP ' .
-                    $directResponse->status() .
-                    ' - ' .
-                    Str::limit($directResponse->body(), 800)
-                );
-            }
-
-            $directJson = $directResponse->json();
-
-            if ((string) data_get($directJson, 'status') === '0') {
-                $apiErrors = data_get($directJson, 'errors')
-                    ?: data_get($directJson, 'messages')
-                    ?: 'Unknown cPanel UAPI error';
-
-                if (is_array($apiErrors)) {
-                    $apiErrors = implode(', ', array_filter($apiErrors));
-                }
-
-                throw new \Exception($apiErrors);
-            }
-
-            return [
-                'status' => data_get($directJson, 'status', 1),
-                'data' => data_get($directJson, 'data', []),
-                'errors' => data_get($directJson, 'errors', []),
-                'messages' => data_get($directJson, 'messages', []),
-            ];
-        } catch (\Throwable $e) {
+        if (!$apiResponse->successful()) {
             throw new \Exception(
-                'Direct cPanel UAPI also failed for user ' .
-                $cpanelUser .
-                '. ' .
-                $e->getMessage() .
-                ' Previous errors: ' .
-                implode(' | ', $errors)
+                'cPanel session UAPI failed HTTP ' .
+                $apiResponse->status()
             );
         }
+
+        $apiJson = $apiResponse->json();
+
+        if ((string) data_get($apiJson, 'status') === '0') {
+            $errors = data_get($apiJson, 'errors')
+                ?: data_get($apiJson, 'messages')
+                ?: 'Unknown cPanel UAPI error';
+
+            if (is_array($errors)) {
+                $errors = implode(', ', array_filter($errors));
+            }
+
+            throw new \Exception($errors);
+        }
+
+        return [
+            'status' => data_get($apiJson, 'status', 1),
+            'data' => data_get($apiJson, 'data', []),
+            'errors' => data_get($apiJson, 'errors', []),
+            'messages' => data_get($apiJson, 'messages', []),
+        ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Get Saved cPanel Password
-    |--------------------------------------------------------------------------
-    */
+    private function cpanelRequest($pendingRequest, string $url, array $params)
+    {
+        if (array_key_exists('content', $params)) {
+            return $pendingRequest
+                ->asForm()
+                ->post($url, $params);
+        }
+
+        return $pendingRequest->get($url, $params);
+    }
 
     private function developerCpanelPassword(DeveloperUser $developer): ?string
     {
@@ -700,12 +669,6 @@ class DeveloperFileEditorController extends Controller
         return null;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Normalize list_files Response
-    |--------------------------------------------------------------------------
-    */
-
     private function normalizeListFilesResponse(array $result, string $dir): array
     {
         $data = $result['data'] ?? [];
@@ -724,9 +687,7 @@ class DeveloperFileEditorController extends Controller
                 $items[] = [
                     'type' => 'dir',
                     'name' => $name,
-                    'path' => $item['fullpath']
-                        ?? $item['path']
-                        ?? rtrim($dir, '/') . '/' . $name,
+                    'path' => $item['fullpath'] ?? $item['path'] ?? rtrim($dir, '/') . '/' . $name,
                     'size' => $item['humansize'] ?? '',
                     'bytes' => $item['size'] ?? 0,
                     'mime' => $item['mimetype'] ?? 'directory',
@@ -747,9 +708,7 @@ class DeveloperFileEditorController extends Controller
                 $items[] = [
                     'type' => 'file',
                     'name' => $name,
-                    'path' => $item['fullpath']
-                        ?? $item['path']
-                        ?? rtrim($dir, '/') . '/' . $name,
+                    'path' => $item['fullpath'] ?? $item['path'] ?? rtrim($dir, '/') . '/' . $name,
                     'size' => $item['humansize'] ?? '',
                     'bytes' => $item['size'] ?? 0,
                     'mime' => $item['mimetype'] ?? '',
@@ -792,9 +751,7 @@ class DeveloperFileEditorController extends Controller
                 $items[] = [
                     'type' => $isDir ? 'dir' : 'file',
                     'name' => $name,
-                    'path' => $item['fullpath']
-                        ?? $item['path']
-                        ?? rtrim($dir, '/') . '/' . $name,
+                    'path' => $item['fullpath'] ?? $item['path'] ?? rtrim($dir, '/') . '/' . $name,
                     'size' => $item['humansize'] ?? '',
                     'bytes' => $item['size'] ?? 0,
                     'mime' => $item['mimetype'] ?? '',
@@ -819,12 +776,6 @@ class DeveloperFileEditorController extends Controller
 
         return array_values($items);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Server / Credentials
-    |--------------------------------------------------------------------------
-    */
 
     private function serverForDeveloper(DeveloperUser $developer): Server
     {
@@ -912,12 +863,6 @@ class DeveloperFileEditorController extends Controller
         return null;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Paths / Security
-    |--------------------------------------------------------------------------
-    */
-
     private function projectRoot(DeveloperUser $developer): string
     {
         $root = $developer->project_root
@@ -996,12 +941,6 @@ class DeveloperFileEditorController extends Controller
         return $host;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Permissions
-    |--------------------------------------------------------------------------
-    */
-
     private function can(DeveloperUser $developer, string $permission): bool
     {
         if (!Schema::hasColumn($developer->getTable(), $permission)) {
@@ -1010,12 +949,6 @@ class DeveloperFileEditorController extends Controller
 
         return (bool) ($developer->{$permission} ?? false);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Blocked Files / Folders
-    |--------------------------------------------------------------------------
-    */
 
     private function isBlockedName(string $name): bool
     {
@@ -1048,12 +981,6 @@ class DeveloperFileEditorController extends Controller
         || str_ends_with($name, '.key');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Monaco Language Detection
-    |--------------------------------------------------------------------------
-    */
-
     private function languageForFile(string $file): string
     {
         $file = strtolower($file);
@@ -1069,8 +996,7 @@ class DeveloperFileEditorController extends Controller
             'js', 'mjs', 'cjs' => 'javascript',
             'ts' => 'typescript',
             'css' => 'css',
-            'scss' => 'scss',
-            'sass' => 'scss',
+            'scss', 'sass' => 'scss',
             'html', 'htm' => 'html',
             'json' => 'json',
             'xml' => 'xml',
@@ -1086,5 +1012,14 @@ class DeveloperFileEditorController extends Controller
             'env' => 'plaintext',
             default => 'plaintext',
         };
+    }
+
+    private function cleanErrorMessage(string $message): string
+    {
+        $message = strip_tags($message);
+        $message = html_entity_decode($message);
+        $message = preg_replace('/\s+/', ' ', $message);
+
+        return Str::limit(trim($message), 900);
     }
 }
