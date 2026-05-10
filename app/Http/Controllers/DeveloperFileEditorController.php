@@ -18,8 +18,8 @@ class DeveloperFileEditorController extends Controller
     |--------------------------------------------------------------------------
     | Visual Code Editor Page
     |--------------------------------------------------------------------------
-    | This editor does NOT use SSH, root, code-server, or SSL proxy.
-    | It uses Monaco Editor + WHM/cPanel File Manager API session.
+    | This editor does not use SSH, root, code-server, or proxy.
+    | It uses Monaco Editor + cPanel File Manager API.
     |--------------------------------------------------------------------------
     */
 
@@ -42,7 +42,7 @@ class DeveloperFileEditorController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Load Folder Files
+    | Load Folder Tree
     |--------------------------------------------------------------------------
     */
 
@@ -300,9 +300,6 @@ class DeveloperFileEditorController extends Controller
     |--------------------------------------------------------------------------
     | Create Folder
     |--------------------------------------------------------------------------
-    | Optional route:
-    | POST /codeditor/folder/create
-    |--------------------------------------------------------------------------
     */
 
     public function createFolder(Request $request)
@@ -362,9 +359,6 @@ class DeveloperFileEditorController extends Controller
     |--------------------------------------------------------------------------
     | Delete File
     |--------------------------------------------------------------------------
-    | Optional route:
-    | POST /codeditor/file/delete
-    |--------------------------------------------------------------------------
     */
 
     public function deleteFile(Request $request)
@@ -394,8 +388,6 @@ class DeveloperFileEditorController extends Controller
                     'message' => 'This file is protected and cannot be deleted.',
                 ], 403);
             }
-
-            [$dir, $file] = $this->splitPath($path);
 
             $this->cpanelUapi($developer, 'Fileman', 'trash_files', [
                 'sourcefiles' => $path,
@@ -432,21 +424,15 @@ class DeveloperFileEditorController extends Controller
     |--------------------------------------------------------------------------
     | cPanel UAPI Caller
     |--------------------------------------------------------------------------
-    | Method 1:
-    | WHM /json-api/cpanel
-    |
-    | Method 2:
-    | WHM create_user_session -> cPanel cpsess URL -> /execute/Module/function
-    |
-    | This fixes:
-    | HTTP 403 Access denied from direct WHM cPanel API call.
+    | Method 1: WHM /json-api/cpanel
+    | Method 2: WHM create_user_session
+    | Method 3: Direct cPanel UAPI with cPanel username/password
     |--------------------------------------------------------------------------
     */
 
     private function cpanelUapi(DeveloperUser $developer, string $module, string $function, array $params = []): array
     {
         $server = $this->serverForDeveloper($developer);
-
         $credentials = $this->serverCredentials($server);
 
         $host = $this->cleanHost((string) ($credentials['host'] ?? ''));
@@ -463,220 +449,267 @@ class DeveloperFileEditorController extends Controller
             throw new \Exception('WHM/cPanel host is missing on server record.');
         }
 
-        if (!$whmUsername || !$whmPassword) {
-            throw new \Exception('WHM username/password is missing on server record.');
-        }
-
         if (!$cpanelUser) {
             throw new \Exception('Developer cPanel username is missing.');
         }
 
+        $errors = [];
+
         /*
         |--------------------------------------------------------------------------
-        | 1. Try direct WHM json-api/cpanel first.
+        | Method 1: Direct WHM json-api/cpanel
         |--------------------------------------------------------------------------
         */
 
-        try {
-            $query = array_merge([
-                'cpanel_jsonapi_user' => $cpanelUser,
-                'cpanel_jsonapi_apiversion' => 3,
-                'cpanel_jsonapi_module' => $module,
-                'cpanel_jsonapi_func' => $function,
-            ], $params);
+        if ($whmUsername && $whmPassword) {
+            try {
+                $query = array_merge([
+                    'cpanel_jsonapi_user' => $cpanelUser,
+                    'cpanel_jsonapi_apiversion' => 3,
+                    'cpanel_jsonapi_module' => $module,
+                    'cpanel_jsonapi_func' => $function,
+                ], $params);
 
-            $response = Http::withoutVerifying()
+                $response = Http::withoutVerifying()
+                    ->timeout(60)
+                    ->acceptJson()
+                    ->withOptions([
+                        'verify' => false,
+                        'connect_timeout' => 20,
+                    ])
+                    ->withBasicAuth($whmUsername, $whmPassword)
+                    ->get('https://' . $host . ':2087/json-api/cpanel', $query);
+
+                if ($response->successful()) {
+                    $json = $response->json();
+
+                    $result = data_get($json, 'cpanelresult.result')
+                        ?: data_get($json, 'result')
+                        ?: [];
+
+                    $status = data_get($result, 'status');
+
+                    if ((string) $status !== '0' && !empty($result)) {
+                        return is_array($result) ? $result : [];
+                    }
+
+                    $errors[] = 'WHM cPanel API denied: ' . Str::limit($response->body(), 500);
+                } else {
+                    $errors[] = 'WHM cPanel API HTTP ' . $response->status() . ': ' . Str::limit($response->body(), 500);
+                }
+            } catch (\Throwable $e) {
+                $errors[] = 'WHM cPanel API exception: ' . $e->getMessage();
+            }
+        } else {
+            $errors[] = 'WHM username/password missing.';
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Method 2: WHM create_user_session then cPanel cpsess UAPI
+        |--------------------------------------------------------------------------
+        */
+
+        if ($whmUsername && $whmPassword) {
+            try {
+                $sessionResponse = Http::withoutVerifying()
+                    ->timeout(60)
+                    ->acceptJson()
+                    ->withOptions([
+                        'verify' => false,
+                        'connect_timeout' => 20,
+                    ])
+                    ->withBasicAuth($whmUsername, $whmPassword)
+                    ->get('https://' . $host . ':2087/json-api/create_user_session', [
+                        'api.version' => 1,
+                        'user' => $cpanelUser,
+                        'service' => 'cpaneld',
+                    ]);
+
+                if ($sessionResponse->successful()) {
+                    $sessionJson = $sessionResponse->json();
+                    $sessionResult = data_get($sessionJson, 'metadata.result');
+
+                    if ((string) $sessionResult !== '0') {
+                        $sessionUrl = data_get($sessionJson, 'data.url');
+
+                        if ($sessionUrl && preg_match('#/(cpsess[0-9]+)/#', $sessionUrl, $matches)) {
+                            $cpsess = $matches[1];
+
+                            $cookieJar = new CookieJar();
+
+                            Http::withoutVerifying()
+                                ->timeout(60)
+                                ->withOptions([
+                                    'verify' => false,
+                                    'cookies' => $cookieJar,
+                                    'allow_redirects' => true,
+                                    'connect_timeout' => 20,
+                                ])
+                                ->get($sessionUrl);
+
+                            $apiUrl = 'https://' . $host . ':2083/' . $cpsess . '/execute/' . $module . '/' . $function;
+
+                            $apiResponse = Http::withoutVerifying()
+                                ->timeout(60)
+                                ->acceptJson()
+                                ->withOptions([
+                                    'verify' => false,
+                                    'cookies' => $cookieJar,
+                                    'connect_timeout' => 20,
+                                ])
+                                ->get($apiUrl, $params);
+
+                            if ($apiResponse->successful()) {
+                                $apiJson = $apiResponse->json();
+
+                                if ((string) data_get($apiJson, 'status') !== '0') {
+                                    return [
+                                        'status' => data_get($apiJson, 'status', 1),
+                                        'data' => data_get($apiJson, 'data', []),
+                                        'errors' => data_get($apiJson, 'errors', []),
+                                        'messages' => data_get($apiJson, 'messages', []),
+                                    ];
+                                }
+
+                                $errors[] = 'cPanel cpsess UAPI denied: ' . Str::limit($apiResponse->body(), 500);
+                            } else {
+                                $errors[] = 'cPanel cpsess UAPI HTTP ' . $apiResponse->status() . ': ' . Str::limit($apiResponse->body(), 500);
+                            }
+                        } else {
+                            $errors[] = 'Unable to extract cpsess token from WHM session URL.';
+                        }
+                    } else {
+                        $errors[] = 'WHM create_user_session denied: ' . Str::limit($sessionResponse->body(), 500);
+                    }
+                } else {
+                    $errors[] = 'WHM create_user_session HTTP ' . $sessionResponse->status() . ': ' . Str::limit($sessionResponse->body(), 500);
+                }
+            } catch (\Throwable $e) {
+                $errors[] = 'WHM create_user_session exception: ' . $e->getMessage();
+            }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Method 3: Direct cPanel UAPI using saved cPanel password
+        |--------------------------------------------------------------------------
+        */
+
+        $cpanelPassword = $this->developerCpanelPassword($developer);
+
+        if (!$cpanelPassword) {
+            throw new \Exception(
+                'Cannot access cPanel File Manager API. WHM API/session failed and no cPanel password is saved for user ' .
+                $cpanelUser .
+                '. Errors: ' . implode(' | ', $errors)
+            );
+        }
+
+        try {
+            $directUrl = 'https://' . $host . ':2083/execute/' . $module . '/' . $function;
+
+            $directResponse = Http::withoutVerifying()
                 ->timeout(60)
                 ->acceptJson()
                 ->withOptions([
                     'verify' => false,
                     'connect_timeout' => 20,
                 ])
-                ->withBasicAuth($whmUsername, $whmPassword)
-                ->get('https://' . $host . ':2087/json-api/cpanel', $query);
+                ->withBasicAuth($cpanelUser, $cpanelPassword)
+                ->get($directUrl, $params);
 
-            if ($response->successful()) {
-                $json = $response->json();
+            if (!$directResponse->successful()) {
+                throw new \Exception(
+                    'Direct cPanel UAPI failed. HTTP ' .
+                    $directResponse->status() .
+                    ' - ' .
+                    Str::limit($directResponse->body(), 800)
+                );
+            }
 
-                $result = data_get($json, 'cpanelresult.result')
-                    ?: data_get($json, 'result')
-                    ?: [];
+            $directJson = $directResponse->json();
 
-                $status = data_get($result, 'status');
+            if ((string) data_get($directJson, 'status') === '0') {
+                $apiErrors = data_get($directJson, 'errors')
+                    ?: data_get($directJson, 'messages')
+                    ?: 'Unknown cPanel UAPI error';
 
-                if ((string) $status !== '0' && !empty($result)) {
-                    return is_array($result) ? $result : [];
+                if (is_array($apiErrors)) {
+                    $apiErrors = implode(', ', array_filter($apiErrors));
                 }
+
+                throw new \Exception($apiErrors);
             }
+
+            return [
+                'status' => data_get($directJson, 'status', 1),
+                'data' => data_get($directJson, 'data', []),
+                'errors' => data_get($directJson, 'errors', []),
+                'messages' => data_get($directJson, 'messages', []),
+            ];
         } catch (\Throwable $e) {
-            /*
-            |--------------------------------------------------------------------------
-            | Continue to session fallback.
-            |--------------------------------------------------------------------------
-            */
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 2. Create cPanel auto-login session.
-        |--------------------------------------------------------------------------
-        */
-
-        $sessionResponse = Http::withoutVerifying()
-            ->timeout(60)
-            ->acceptJson()
-            ->withOptions([
-                'verify' => false,
-                'connect_timeout' => 20,
-            ])
-            ->withBasicAuth($whmUsername, $whmPassword)
-            ->get('https://' . $host . ':2087/json-api/create_user_session', [
-                'api.version' => 1,
-                'user' => $cpanelUser,
-                'service' => 'cpaneld',
-            ]);
-
-        if (!$sessionResponse->successful()) {
             throw new \Exception(
-                'WHM create cPanel session failed. HTTP ' .
-                $sessionResponse->status() .
-                ' - ' .
-                Str::limit($sessionResponse->body(), 800)
+                'Direct cPanel UAPI also failed for user ' .
+                $cpanelUser .
+                '. ' .
+                $e->getMessage() .
+                ' Previous errors: ' .
+                implode(' | ', $errors)
             );
         }
-
-        $sessionJson = $sessionResponse->json();
-
-        $sessionResult = data_get($sessionJson, 'metadata.result');
-
-        if ((string) $sessionResult === '0') {
-            throw new \Exception(
-                'WHM create cPanel session denied: ' .
-                (
-                    data_get($sessionJson, 'metadata.reason')
-                    ?: data_get($sessionJson, 'reason')
-                    ?: 'Access denied.'
-                )
-            );
-        }
-
-        $sessionUrl = data_get($sessionJson, 'data.url');
-
-        if (!$sessionUrl) {
-            throw new \Exception(
-                'WHM create cPanel session failed: ' .
-                (
-                    data_get($sessionJson, 'metadata.reason')
-                    ?: data_get($sessionJson, 'reason')
-                    ?: 'Session URL missing.'
-                )
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 3. Extract cpsess token.
-        |--------------------------------------------------------------------------
-        */
-
-        $cpsess = null;
-
-        if (preg_match('#/(cpsess[0-9]+)/#', $sessionUrl, $matches)) {
-            $cpsess = $matches[1];
-        }
-
-        if (!$cpsess) {
-            throw new \Exception('Unable to extract cpsess token from WHM session URL.');
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 4. Open login URL once to create session cookies.
-        |--------------------------------------------------------------------------
-        */
-
-        $cookieJar = new CookieJar();
-
-        Http::withoutVerifying()
-            ->timeout(60)
-            ->withOptions([
-                'verify' => false,
-                'cookies' => $cookieJar,
-                'allow_redirects' => true,
-                'connect_timeout' => 20,
-            ])
-            ->get($sessionUrl);
-
-        /*
-        |--------------------------------------------------------------------------
-        | 5. Call cPanel UAPI using cpsess URL.
-        |--------------------------------------------------------------------------
-        */
-
-        $apiUrl = 'https://' . $host . ':2083/' . $cpsess . '/execute/' . $module . '/' . $function;
-
-        $apiResponse = Http::withoutVerifying()
-            ->timeout(60)
-            ->acceptJson()
-            ->withOptions([
-                'verify' => false,
-                'cookies' => $cookieJar,
-                'connect_timeout' => 20,
-            ])
-            ->get($apiUrl, $params);
-
-        if (!$apiResponse->successful()) {
-            throw new \Exception(
-                'cPanel session UAPI failed. HTTP ' .
-                $apiResponse->status() .
-                ' - ' .
-                Str::limit($apiResponse->body(), 800)
-            );
-        }
-
-        $apiJson = $apiResponse->json();
-
-        $status = data_get($apiJson, 'status');
-
-        if ((string) $status === '0') {
-            $errors = data_get($apiJson, 'errors')
-                ?: data_get($apiJson, 'messages')
-                ?: data_get($apiJson, 'metadata.reason')
-                ?: 'Unknown cPanel UAPI error';
-
-            if (is_array($errors)) {
-                $errors = implode(', ', array_filter($errors));
-            }
-
-            throw new \Exception($errors);
-        }
-
-        return [
-            'status' => data_get($apiJson, 'status', 1),
-            'data' => data_get($apiJson, 'data', []),
-            'errors' => data_get($apiJson, 'errors', []),
-            'messages' => data_get($apiJson, 'messages', []),
-        ];
     }
 
     /*
     |--------------------------------------------------------------------------
-    | Normalize Fileman list_files Response
+    | Get Saved cPanel Password
+    |--------------------------------------------------------------------------
+    */
+
+    private function developerCpanelPassword(DeveloperUser $developer): ?string
+    {
+        $possibleColumns = [
+            'cpanel_password',
+            'temporary_password',
+            'ssh_password',
+            'password_plain',
+        ];
+
+        foreach ($possibleColumns as $column) {
+            if (!Schema::hasColumn($developer->getTable(), $column)) {
+                continue;
+            }
+
+            if (empty($developer->{$column})) {
+                continue;
+            }
+
+            $value = (string) $developer->{$column};
+
+            try {
+                return Crypt::decryptString($value);
+            } catch (\Throwable $e) {
+                try {
+                    return decrypt($value);
+                } catch (\Throwable $e2) {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Normalize list_files Response
     |--------------------------------------------------------------------------
     */
 
     private function normalizeListFilesResponse(array $result, string $dir): array
     {
         $data = $result['data'] ?? [];
-
         $items = [];
-
-        /*
-        |--------------------------------------------------------------------------
-        | UAPI sometimes returns:
-        | data.files + data.dirs
-        |--------------------------------------------------------------------------
-        */
 
         if (isset($data['dirs']) || isset($data['files'])) {
             foreach (($data['dirs'] ?? []) as $item) {
@@ -684,7 +717,7 @@ class DeveloperFileEditorController extends Controller
                     ?? $item['name']
                     ?? basename($item['fullpath'] ?? '');
 
-                if ($this->isBlockedName($name)) {
+                if (!$name || $this->isBlockedName($name)) {
                     continue;
                 }
 
@@ -707,7 +740,7 @@ class DeveloperFileEditorController extends Controller
                     ?? $item['name']
                     ?? basename($item['fullpath'] ?? '');
 
-                if ($this->isBlockedName($name)) {
+                if (!$name || $this->isBlockedName($name)) {
                     continue;
                 }
 
@@ -727,12 +760,6 @@ class DeveloperFileEditorController extends Controller
 
             return $this->sortItems($items);
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | UAPI sometimes returns flat data array.
-        |--------------------------------------------------------------------------
-        */
 
         if (is_array($data)) {
             foreach ($data as $item) {
