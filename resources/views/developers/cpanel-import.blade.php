@@ -67,15 +67,21 @@
         return 'https://code-' . $safeUsername($username) . '.' . $codeEditorBaseDomain;
     };
 
-    $editorUrlForUser = function ($username, $domain = null, $account = []) use ($autoEditorUrlForUser) {
+    $isWrongBackendUrl = function ($url) {
+        $url = trim((string) $url);
+
+        return !$url
+            || str_contains($url, 'developercodes.webscepts.com/codeditor')
+            || str_contains($url, 'developercodes.webscepts.com/codeeditor')
+            || str_ends_with(rtrim($url, '/'), '/codeditor')
+            || str_ends_with(rtrim($url, '/'), '/codeeditor');
+    };
+
+    $editorUrlForUser = function ($username, $domain = null, $account = []) use ($autoEditorUrlForUser, $isWrongBackendUrl) {
         $existing = $account['code_editor_url'] ?? $account['vscode_url'] ?? null;
 
-        if (
-            $existing &&
-            !str_contains($existing, 'developercodes.webscepts.com/codeditor') &&
-            !str_ends_with(rtrim($existing, '/'), '/codeditor')
-        ) {
-            return $existing;
+        if (!$isWrongBackendUrl($existing)) {
+            return rtrim($existing, '/');
         }
 
         return $autoEditorUrlForUser($username);
@@ -279,6 +285,12 @@
         border-color: #fecaca;
     }
 
+    .pill-yellow {
+        background: #fef9c3;
+        color: #a16207;
+        border-color: #fde68a;
+    }
+
     .pill-slate {
         background: #f8fafc;
         color: #64748b;
@@ -290,6 +302,42 @@
         background: linear-gradient(135deg, #eff6ff, #f8fafc);
         border-radius: 18px;
         padding: 16px;
+    }
+
+    .visual-flow {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    @media (min-width: 1024px) {
+        .visual-flow {
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+        }
+    }
+
+    .flow-card {
+        border-radius: 16px;
+        border: 1px solid #dbeafe;
+        background: #eff6ff;
+        padding: 14px;
+        font-size: 12px;
+        font-weight: 900;
+        color: #1e40af;
+    }
+
+    .flow-arrow {
+        display: none;
+        color: #2563eb;
+        font-weight: 900;
+        text-align: center;
+    }
+
+    @media (min-width: 1024px) {
+        .flow-arrow {
+            display: block;
+        }
     }
 </style>
 
@@ -371,8 +419,7 @@
             </div>
 
             <pre id="createdPasswordsBox" class="relative mt-5 bg-black/40 border border-white/10 rounded-2xl p-5 overflow-auto text-xs whitespace-pre-wrap">@foreach(session('created_logins') as $login)
-URL: {{ $login['url'] ?? $developerUrl }}
-Code Editor Public URL: {{ $login['codeditor'] ?? $publicCodeEditorUrl }}
+Public Editor URL: {{ $login['codeditor'] ?? $publicCodeEditorUrl }}
 Backend Editor URL: {{ $login['code_editor_url'] ?? '-' }}
 VS Code Setup: {{ $login['code_editor_setup'] ?? '-' }}
 Login: {{ $login['login'] ?? '-' }}
@@ -401,31 +448,27 @@ Password: {{ $login['password'] ?? '-' }}
 
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-100 text-xs font-black">
                         <i class="fa-solid fa-users-gear"></i>
-                        Auto Import from WHM
+                        Auto Import
                     </span>
 
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100 text-xs font-black">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i>
-                        Auto DNS + SSL
+                        <i class="fa-solid fa-code"></i>
+                        Visual VS Code Page
                     </span>
 
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-black">
-                        <i class="fa-solid fa-code"></i>
-                        Auto VS Code Backend
+                        <i class="fa-solid fa-globe"></i>
+                        Backend Proxy
                     </span>
                 </div>
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
-                    Fetch cPanel accounts, choose framework and permissions, then Developer Codes automatically creates
-                    <b>code-username.{{ $codeEditorBaseDomain }}</b>, installs Let’s Encrypt SSL, configures proxy, starts code-server,
-                    and saves the backend URL.
+                    Developers open <b>{{ $publicCodeEditorUrl }}</b>. The real VS Code backend is generated as
+                    <b>https://code-username.{{ $codeEditorBaseDomain }}</b>. If root/WHM SSH is unavailable, the system can try cPanel SSH,
+                    but HTTPS reverse proxy still needs root/WHM access on the target server.
                 </p>
 
                 <div class="mt-5 flex flex-wrap gap-2">
-                    <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
-                        Portal: {{ $developerUrl }}
-                    </span>
-
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
                         Public Editor: {{ $publicCodeEditorUrl }}
                     </span>
@@ -445,19 +488,26 @@ Password: {{ $login['password'] ?? '-' }}
                    target="_blank"
                    class="px-6 py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-center">
                     <i class="fa-solid fa-arrow-up-right-from-square mr-2"></i>
-                    Open Developer Portal
+                    Open Developer Login
+                </a>
+
+                <a href="{{ $publicCodeEditorUrl }}"
+                   target="_blank"
+                   class="px-6 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black text-center">
+                    <i class="fa-solid fa-code mr-2"></i>
+                    Open Visual VS Code
                 </a>
 
                 @if(Route::has('developers.code-editor.setup-existing'))
                     <form method="POST"
                           action="{{ $setupExistingRoute }}"
-                          onsubmit="return confirm('Provision VS Code + SSL for all existing developer accounts? This can take time.');">
+                          onsubmit="return confirm('Provision VS Code for all existing developer accounts? This can take time.');">
                         @csrf
 
                         <button type="submit"
                                 class="w-full px-6 py-4 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-center">
                             <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>
-                            Setup All Existing VS Code + SSL
+                            Setup All Existing
                         </button>
                     </form>
                 @endif
@@ -469,6 +519,44 @@ Password: {{ $login['password'] ?? '-' }}
                     Fetch cPanel Users
                 </button>
             </div>
+        </div>
+    </div>
+
+    {{-- Visual VS Code Flow --}}
+    <div class="bg-white rounded-3xl shadow border border-slate-100 p-6">
+        <div class="flex items-start gap-3 mb-5">
+            <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-diagram-project"></i>
+            </div>
+
+            <div>
+                <h2 class="text-2xl font-black text-slate-900">How Visual VS Code Loads</h2>
+                <p class="text-slate-500 font-bold mt-1">
+                    The public URL is Laravel. The backend URL must be a working code-server reverse proxy.
+                </p>
+            </div>
+        </div>
+
+        <div class="visual-flow">
+            <div class="flow-card">
+                <div class="text-slate-500 uppercase tracking-widest text-[10px] mb-1">Developer Opens</div>
+                <div class="break-all">{{ $publicCodeEditorUrl }}</div>
+            </div>
+
+            <div class="flow-arrow">
+                <i class="fa-solid fa-arrow-right text-xl"></i>
+            </div>
+
+            <div class="flow-card">
+                <div class="text-slate-500 uppercase tracking-widest text-[10px] mb-1">Iframe Backend</div>
+                <div class="break-all">https://code-username.{{ $codeEditorBaseDomain }}</div>
+            </div>
+        </div>
+
+        <div class="mt-5 rounded-2xl bg-yellow-50 border border-yellow-200 p-4 text-yellow-800 text-sm font-bold">
+            <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+            If the backend shows <b>Index of /</b> or a browser error, the visual page is working but backend proxy is not ready.
+            Press <b>Setup VS Code + SSL</b>. If it says root SSH failed, add working WHM/root credentials for the server.
         </div>
     </div>
 
@@ -545,7 +633,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                     @foreach($servers as $server)
                         <option value="{{ $server->id }}" {{ (string)$loadedServerId === (string)$server->id ? 'selected' : '' }}>
-                            {{ $server->name }} — {{ $server->host }}
+                            {{ $server->name ?? 'Server' }} — {{ $server->host ?? $server->hostname ?? $server->ip_address ?? $server->public_ip ?? '-' }}
                         </option>
                     @endforeach
                 </select>
@@ -565,11 +653,11 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div>
                     <p class="text-sm text-blue-800 font-black">
-                        Auto VS Code setup
+                        Visual VS Code setup
                     </p>
                     <p class="text-sm text-blue-700 font-bold mt-1">
-                        New selected accounts are provisioned automatically. Existing accounts can be provisioned one by one
-                        using <b>Setup VS Code + SSL</b>, or all together using <b>Setup All Existing VS Code + SSL</b>.
+                        New selected accounts are saved with the correct public visual editor URL and backend URL.
+                        Full HTTPS backend proxy requires root/WHM access. If root fails, the controller tries the cPanel username.
                     </p>
                 </div>
             </div>
@@ -589,7 +677,6 @@ Password: {{ $login['password'] ?? '-' }}
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
                             Select accounts and configure framework, portal access, permissions and database.
-                            VS Code backend domain, proxy and SSL will be created automatically.
                         </p>
                     </div>
 
@@ -634,9 +721,6 @@ Password: {{ $login['password'] ?? '-' }}
                         </span>
                         <span class="px-3 py-2 rounded-full bg-purple-100 text-purple-700">
                             Showing: <span id="accountShowingCount">0</span>
-                        </span>
-                        <span class="px-3 py-2 rounded-full bg-cyan-100 text-cyan-700">
-                            Auto VS Code SSL enabled
                         </span>
                     </div>
 
@@ -720,8 +804,8 @@ Password: {{ $login['password'] ?? '-' }}
                                             @endif
 
                                             <span class="mini-pill pill-purple">
-                                                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                                Auto DNS + SSL
+                                                <i class="fa-solid fa-code"></i>
+                                                Visual VS Code
                                             </span>
 
                                             @if(!empty($account['suspended']))
@@ -796,34 +880,33 @@ Password: {{ $login['password'] ?? '-' }}
                                         </div>
 
                                         <div class="setup-box">
-                                            <div class="dev-section-title">Auto Code Editor Backend</div>
+                                            <div class="dev-section-title">Visual Code Editor URLs</div>
 
                                             <div class="flex flex-wrap gap-2 mb-3">
-                                                <span class="mini-pill pill-blue">
-                                                    <i class="fa-solid fa-globe"></i>
-                                                    DNS auto
-                                                </span>
                                                 <span class="mini-pill pill-green">
-                                                    <i class="fa-solid fa-lock"></i>
-                                                    SSL auto
+                                                    <i class="fa-solid fa-window-maximize"></i>
+                                                    Public Laravel Page
                                                 </span>
                                                 <span class="mini-pill pill-purple">
-                                                    <i class="fa-solid fa-code"></i>
-                                                    code-server auto
+                                                    <i class="fa-solid fa-server"></i>
+                                                    Backend code-server
                                                 </span>
                                             </div>
 
+                                            <label class="text-xs font-black text-slate-500">Public URL</label>
+                                            <input type="text"
+                                                   value="{{ $publicCodeEditorUrl }}"
+                                                   readonly
+                                                   class="dev-card-input mb-3">
+
+                                            <label class="text-xs font-black text-slate-500">Backend URL</label>
                                             <input type="text"
                                                    value="{{ $editorUrl }}"
                                                    readonly
                                                    class="dev-card-input">
 
-                                            <div class="text-xs text-blue-700 mt-2 font-bold break-all">
-                                                Developer opens: {{ $publicCodeEditorUrl }}
-                                            </div>
-
-                                            <div class="text-xs text-slate-500 mt-1 font-bold">
-                                                Backend URL is generated automatically. No manual domain needed.
+                                            <div class="text-xs text-slate-500 mt-2 font-bold">
+                                                Developer opens public URL. Backend URL must proxy to code-server.
                                             </div>
                                         </div>
                                     </div>
@@ -936,12 +1019,12 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div class="p-6 border-t bg-slate-50 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div class="text-sm text-slate-500 font-bold">
-                        Selected users will be created/updated. Developer Codes will automatically create DNS, install SSL, setup proxy and start VS Code backend.
+                        Selected users will be created/updated. The controller will try root/WHM SSH first, then cPanel SSH fallback.
                     </div>
 
                     <button class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
                         <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>
-                        Create / Update + Auto Setup VS Code SSL
+                        Create / Update + Setup Visual VS Code
                     </button>
                 </div>
             </div>
@@ -965,7 +1048,7 @@ Password: {{ $login['password'] ?? '-' }}
             <div>
                 <h2 class="text-2xl font-black text-slate-900">Developer Portal Users</h2>
                 <p class="text-slate-500 mt-1">
-                    Existing Developer Codes users. Save permissions here, and press Setup VS Code + SSL if backend domain, proxy or SSL is missing.
+                    Existing Developer Codes users. Press Setup VS Code + SSL to create/repair the backend for the visual editor.
                 </p>
             </div>
 
@@ -979,7 +1062,7 @@ Password: {{ $login['password'] ?? '-' }}
                 @if(Route::has('developers.code-editor.setup-existing'))
                     <form method="POST"
                           action="{{ $setupExistingRoute }}"
-                          onsubmit="return confirm('Provision VS Code + SSL for all existing developer accounts?');">
+                          onsubmit="return confirm('Provision VS Code for all existing developer accounts?');">
                         @csrf
 
                         <button type="submit"
@@ -1005,17 +1088,11 @@ Password: {{ $login['password'] ?? '-' }}
 
                     $fallbackDeveloperEditorUrl = $developerEditorUrl;
 
-                    if (
-                        !$fallbackDeveloperEditorUrl ||
-                        str_contains($fallbackDeveloperEditorUrl, 'developercodes.webscepts.com/codeditor') ||
-                        str_ends_with(rtrim($fallbackDeveloperEditorUrl, '/'), '/codeditor')
-                    ) {
+                    if ($isWrongBackendUrl($fallbackDeveloperEditorUrl)) {
                         $fallbackDeveloperEditorUrl = $autoDeveloperEditorUrl;
                     }
 
-                    $needsSetup = empty($developerEditorUrl)
-                        || str_contains((string) $developerEditorUrl, 'developercodes.webscepts.com/codeditor')
-                        || str_ends_with(rtrim((string) $developerEditorUrl, '/'), '/codeditor');
+                    $needsSetup = $isWrongBackendUrl($developerEditorUrl);
 
                     $developerSearchText = strtolower(
                         ($developer->name ?? '') . ' ' .
@@ -1103,7 +1180,6 @@ Password: {{ $login['password'] ?? '-' }}
                         <div class="p-5">
                             <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
 
-                                {{-- Main Settings --}}
                                 <div class="xl:col-span-4 space-y-4">
                                     <div>
                                         <div class="dev-section-title">Framework</div>
@@ -1126,36 +1202,39 @@ Password: {{ $login['password'] ?? '-' }}
                                     </div>
 
                                     <div class="setup-box">
-                                        <div class="dev-section-title">Auto Code Editor Backend</div>
+                                        <div class="dev-section-title">Visual Code Editor</div>
 
                                         <input type="hidden" name="code_editor_url" value="{{ $fallbackDeveloperEditorUrl }}">
 
+                                        <label class="text-xs font-black text-slate-500">Developer opens this URL</label>
+                                        <input type="text"
+                                               value="{{ $publicCodeEditorUrl }}"
+                                               readonly
+                                               class="dev-card-input mb-3">
+
+                                        <label class="text-xs font-black text-slate-500">Backend iframe URL</label>
                                         <input type="text"
                                                value="{{ $fallbackDeveloperEditorUrl }}"
                                                readonly
                                                class="dev-card-input">
 
                                         <div class="flex flex-wrap gap-2 mt-3">
-                                            <span class="mini-pill pill-blue">
-                                                <i class="fa-solid fa-globe"></i>
-                                                DNS by CloudNS
-                                            </span>
                                             <span class="mini-pill pill-green">
-                                                <i class="fa-solid fa-lock"></i>
-                                                Let’s Encrypt SSL
+                                                <i class="fa-solid fa-window-maximize"></i>
+                                                Laravel public UI
                                             </span>
                                             <span class="mini-pill pill-purple">
-                                                <i class="fa-solid fa-code"></i>
-                                                code-server
+                                                <i class="fa-solid fa-server"></i>
+                                                code-server backend
+                                            </span>
+                                            <span class="mini-pill pill-yellow">
+                                                <i class="fa-solid fa-key"></i>
+                                                Root/WHM for proxy
                                             </span>
                                         </div>
 
-                                        <div class="text-xs text-blue-700 mt-3 font-bold break-all">
-                                            Public URL: {{ $publicCodeEditorUrl }}
-                                        </div>
-
-                                        <div class="text-xs text-slate-500 mt-1 font-bold">
-                                            Backend URL is generated by username. Do not set it to the public `/codeditor` URL.
+                                        <div class="text-xs text-slate-500 mt-3 font-bold">
+                                            Do not set backend to /codeditor. Backend must be code-username.{{ $codeEditorBaseDomain }}.
                                         </div>
                                     </div>
 
@@ -1165,7 +1244,14 @@ Password: {{ $login['password'] ?? '-' }}
                                                target="_blank"
                                                class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
                                                 <i class="fa-solid fa-code"></i>
-                                                Open Public Editor
+                                                Open Visual VS Code
+                                            </a>
+
+                                            <a href="{{ $fallbackDeveloperEditorUrl }}"
+                                               target="_blank"
+                                               class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs">
+                                                <i class="fa-solid fa-server"></i>
+                                                Test Backend
                                             </a>
                                         </div>
 
@@ -1175,17 +1261,16 @@ Password: {{ $login['password'] ?? '-' }}
 
                                         @if($needsSetup)
                                             <div class="mt-3 rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-bold text-red-700">
-                                                Backend/SSL/proxy may not be ready. Press <b>Setup VS Code + SSL</b>.
+                                                Backend URL is missing or wrong. Press <b>Setup VS Code + SSL</b>.
                                             </div>
                                         @else
                                             <div class="mt-3 rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-bold text-green-700">
-                                                Backend URL saved. Press setup again if VS Code is not showing.
+                                                Backend URL is saved. If visual editor still does not show, press <b>Setup VS Code + SSL</b> to repair proxy/SSL.
                                             </div>
                                         @endif
                                     </div>
                                 </div>
 
-                                {{-- Commands --}}
                                 <div class="xl:col-span-3 space-y-4">
                                     <div>
                                         <div class="dev-section-title">Commands</div>
@@ -1241,7 +1326,6 @@ Password: {{ $login['password'] ?? '-' }}
                                     </div>
                                 </div>
 
-                                {{-- Editable Permissions --}}
                                 <div class="xl:col-span-5">
                                     <div class="dev-section-title">Update Permissions</div>
 
@@ -1281,7 +1365,7 @@ Password: {{ $login['password'] ?? '-' }}
 
                     <div class="p-5 border-t bg-slate-50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                         <div class="text-sm text-slate-500 font-bold">
-                            Save permissions separately. Use Setup VS Code + SSL to create/repair DNS, proxy, code-server and SSL.
+                            Save permissions separately. Use Setup VS Code + SSL to create/repair backend code-server, DNS, proxy and SSL.
                         </div>
 
                         <div class="flex flex-wrap justify-end gap-2">
@@ -1295,7 +1379,7 @@ Password: {{ $login['password'] ?? '-' }}
                             @if(Route::has('developers.code-editor.setup'))
                                 <form method="POST"
                                       action="{{ $setupRoute }}"
-                                      onsubmit="return confirm('Setup or repair DNS, proxy, code-server and Let\\'s Encrypt SSL for this developer?');">
+                                      onsubmit="return confirm('Setup or repair Visual VS Code for this developer?');">
                                     @csrf
 
                                     <button type="submit"
