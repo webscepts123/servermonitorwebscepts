@@ -47,6 +47,12 @@ return [
         'api_url' => env('CLOUDNS_API_URL', 'https://api.cloudns.net'),
     ],
 
+    'code_editor' => [
+        'base_domain' => env('CODE_EDITOR_BASE_DOMAIN', 'webscepts.com'),
+        'port_start' => env('CODE_EDITOR_PORT_START', 8081),
+        'certbot_email' => env('CERTBOT_EMAIL', 'info@webscepts.com'),
+    ],
+
     'vscode' => [
         'url' => env('VSCODE_WEB_URL'),
     ],

@@ -39,6 +39,7 @@
 
     $developerUrl = 'https://developercodes.webscepts.com/login';
     $publicCodeEditorUrl = 'https://developercodes.webscepts.com/codeditor';
+    $codeEditorBaseDomain = config('services.code_editor.base_domain', env('CODE_EDITOR_BASE_DOMAIN', 'webscepts.com'));
 
     $syncRoute = Route::has('developers.cpanel.sync') ? route('developers.cpanel.sync') : '#';
     $bulkImportRoute = Route::has('developers.cpanel.bulk.import') ? route('developers.cpanel.bulk.import') : '#';
@@ -53,32 +54,26 @@
         );
     };
 
-    $editorUrlForUser = function ($username, $domain = null, $account = []) {
-        $existing = $account['code_editor_url']
-            ?? $account['vscode_url']
-            ?? null;
+    $safeUsername = function ($username) {
+        $username = strtolower(trim((string) $username));
+        $username = preg_replace('/[^a-zA-Z0-9\-]/', '-', $username);
+        $username = trim($username, '-');
 
-        if ($existing) {
+        return $username ?: 'developer';
+    };
+
+    $autoEditorUrlForUser = function ($username) use ($safeUsername, $codeEditorBaseDomain) {
+        return 'https://code-' . $safeUsername($username) . '.' . $codeEditorBaseDomain;
+    };
+
+    $editorUrlForUser = function ($username, $domain = null, $account = []) use ($autoEditorUrlForUser) {
+        $existing = $account['code_editor_url'] ?? $account['vscode_url'] ?? null;
+
+        if ($existing && !str_contains($existing, 'developercodes.webscepts.com/codeditor')) {
             return $existing;
         }
 
-        $username = strtolower(trim((string) $username));
-
-        if ($username) {
-            return 'https://code-' . $username . '.webscepts.com';
-        }
-
-        $domain = strtolower(trim((string) $domain));
-
-        if ($domain && $domain !== '-') {
-            $domain = preg_replace('#^https?://#', '', $domain);
-            $domain = preg_replace('#/.*$#', '', $domain);
-            $domain = str_replace([':', '_'], '-', $domain);
-
-            return 'https://code-' . $domain;
-        }
-
-        return '';
+        return $autoEditorUrlForUser($username);
     };
 
     $developerCount = method_exists($developers, 'count') ? $developers->count() : 0;
@@ -141,6 +136,12 @@
             'can_postgresql' => ['PostgreSQL', 'fa-solid fa-server'],
         ],
     ];
+
+    $setupRouteFor = function ($developer) {
+        return Route::has('developers.code-editor.setup')
+            ? route('developers.code-editor.setup', $developer->id)
+            : '#';
+    };
 @endphp
 
 <style>
@@ -201,6 +202,12 @@
         box-shadow: 0 0 0 2px rgba(37, 99, 235, .15);
     }
 
+    .dev-card-input[readonly] {
+        background: #f8fafc;
+        color: #334155;
+        cursor: not-allowed;
+    }
+
     .dev-check {
         display: inline-flex;
         align-items: center;
@@ -231,27 +238,53 @@
         margin-bottom: 10px;
     }
 
-    .permission-pill {
+    .mini-pill {
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        padding: 8px 10px;
-        border-radius: 12px;
+        padding: 7px 10px;
+        border-radius: 999px;
         font-size: 11px;
         font-weight: 900;
         border: 1px solid;
+        white-space: nowrap;
     }
 
-    .permission-on {
+    .pill-green {
         background: #dcfce7;
         color: #15803d;
         border-color: #bbf7d0;
     }
 
-    .permission-off {
+    .pill-blue {
+        background: #dbeafe;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+
+    .pill-purple {
+        background: #f3e8ff;
+        color: #7e22ce;
+        border-color: #e9d5ff;
+    }
+
+    .pill-red {
+        background: #fee2e2;
+        color: #b91c1c;
+        border-color: #fecaca;
+    }
+
+    .pill-slate {
         background: #f8fafc;
-        color: #94a3b8;
+        color: #64748b;
         border-color: #e2e8f0;
+    }
+
+    .setup-box {
+        border: 1px solid #bfdbfe;
+        background: linear-gradient(135deg, #eff6ff, #f8fafc);
+        border-radius: 18px;
+        padding: 16px;
     }
 </style>
 
@@ -309,6 +342,7 @@
 URL: {{ $login['url'] ?? $developerUrl }}
 Code Editor Public URL: {{ $login['codeditor'] ?? $publicCodeEditorUrl }}
 Backend Editor URL: {{ $login['code_editor_url'] ?? '-' }}
+VS Code Setup: {{ $login['code_editor_setup'] ?? '-' }}
 Login: {{ $login['login'] ?? '-' }}
 Email: {{ $login['email'] ?? '-' }}
 Domain: {{ $login['domain'] ?? '-' }}
@@ -339,19 +373,19 @@ Password: {{ $login['password'] ?? '-' }}
                     </span>
 
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100 text-xs font-black">
-                        <i class="fa-solid fa-layer-group"></i>
-                        Multi Framework
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        Auto DNS + SSL
                     </span>
 
                     <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-black">
                         <i class="fa-solid fa-code"></i>
-                        Per Account VS Code
+                        Auto VS Code Backend
                     </span>
                 </div>
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
-                    Fetch cPanel accounts, choose frameworks, set backend Code Editor URL,
-                    assign permissions, and control Developer Portal access.
+                    Fetch cPanel accounts, choose framework and permissions, then Developer Codes automatically creates
+                    <b>code-username.{{ $codeEditorBaseDomain }}</b>, installs Let’s Encrypt SSL, and saves the backend URL.
                 </p>
 
                 <div class="mt-5 flex flex-wrap gap-2">
@@ -364,11 +398,11 @@ Password: {{ $login['password'] ?? '-' }}
                     </span>
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
-                        Loaded cPanel Accounts: {{ $cpanelAccounts->count() }}
+                        Backend Format: https://code-username.{{ $codeEditorBaseDomain }}
                     </span>
 
                     <span class="px-4 py-2 rounded-full bg-white/10 border border-white/20 text-xs font-bold">
-                        Developer Users: {{ $developerCount }}
+                        Loaded Accounts: {{ $cpanelAccounts->count() }}
                     </span>
                 </div>
             </div>
@@ -484,11 +518,12 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div>
                     <p class="text-sm text-blue-800 font-black">
-                        cPanel password note
+                        Auto VS Code setup
                     </p>
                     <p class="text-sm text-blue-700 font-bold mt-1">
-                        WHM can provide cPanel username, domain, IP and contact email, but it cannot reveal existing cPanel passwords.
-                        Developer Codes creates a separate temporary password for the developer portal.
+                        When selected developer accounts are created or updated, the system will auto-create
+                        <b>code-username.{{ $codeEditorBaseDomain }}</b>, install Nginx reverse proxy, run Let’s Encrypt SSL,
+                        start code-server, and save the backend URL. No manual domain entry needed.
                     </p>
                 </div>
             </div>
@@ -507,7 +542,8 @@ Password: {{ $login['password'] ?? '-' }}
                     <div>
                         <h2 class="text-2xl font-black text-slate-900">Available cPanel Accounts</h2>
                         <p class="text-slate-500 mt-1">
-                            Select accounts and configure framework, editor URL, portal access, commands, permissions and database.
+                            Select accounts and configure framework, portal access, permissions and database.
+                            Code editor backend domain and SSL will be created automatically.
                         </p>
                     </div>
 
@@ -553,6 +589,9 @@ Password: {{ $login['password'] ?? '-' }}
                         <span class="px-3 py-2 rounded-full bg-purple-100 text-purple-700">
                             Showing: <span id="accountShowingCount">0</span>
                         </span>
+                        <span class="px-3 py-2 rounded-full bg-cyan-100 text-cyan-700">
+                            Auto SSL enabled
+                        </span>
                     </div>
 
                     <div class="flex items-center gap-2">
@@ -587,11 +626,7 @@ Password: {{ $login['password'] ?? '-' }}
                             $alreadyExists = !empty($existingDeveloper);
                             $portalActive = $existingDeveloper ? $portalIsActive($existingDeveloper) : true;
 
-                            $currentEditorUrl = $existingDeveloper
-                                ? ($existingDeveloper->code_editor_url ?? $existingDeveloper->vscode_url ?? null)
-                                : null;
-
-                            $editorUrl = $currentEditorUrl ?: $editorUrlForUser($username, $domain, $account);
+                            $editorUrl = $editorUrlForUser($username, $domain, $account);
 
                             $searchText = strtolower(
                                 ($domain ?? '') . ' ' .
@@ -627,17 +662,25 @@ Password: {{ $login['password'] ?? '-' }}
                                             <h3 class="text-xl font-black text-slate-900">{{ $domain }}</h3>
 
                                             @if($alreadyExists)
-                                                <span class="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-black">
+                                                <span class="mini-pill pill-green">
+                                                    <i class="fa-solid fa-circle-check"></i>
                                                     Existing Developer
                                                 </span>
                                             @else
-                                                <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-black">
+                                                <span class="mini-pill pill-blue">
+                                                    <i class="fa-solid fa-plus"></i>
                                                     Ready
                                                 </span>
                                             @endif
 
+                                            <span class="mini-pill pill-purple">
+                                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                                Auto DNS + SSL
+                                            </span>
+
                                             @if(!empty($account['suspended']))
-                                                <span class="px-3 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black">
+                                                <span class="mini-pill pill-red">
+                                                    <i class="fa-solid fa-ban"></i>
                                                     Suspended
                                                 </span>
                                             @endif
@@ -677,6 +720,7 @@ Password: {{ $login['password'] ?? '-' }}
                                 <input type="hidden" name="accounts[{{ $username }}][email]" value="{{ $email }}">
                                 <input type="hidden" name="accounts[{{ $username }}][domain]" value="{{ $domain }}">
                                 <input type="hidden" name="accounts[{{ $username }}][server_id]" value="{{ $account['server_id'] ?? $loadedServerId }}">
+                                <input type="hidden" name="accounts[{{ $username }}][code_editor_url]" value="{{ $editorUrl }}">
 
                                 <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
 
@@ -705,15 +749,35 @@ Password: {{ $login['password'] ?? '-' }}
                                             </div>
                                         </div>
 
-                                        <div>
-                                            <div class="dev-section-title">Code Editor URL</div>
+                                        <div class="setup-box">
+                                            <div class="dev-section-title">Auto Code Editor Backend</div>
+
+                                            <div class="flex flex-wrap gap-2 mb-3">
+                                                <span class="mini-pill pill-blue">
+                                                    <i class="fa-solid fa-globe"></i>
+                                                    DNS auto
+                                                </span>
+                                                <span class="mini-pill pill-green">
+                                                    <i class="fa-solid fa-lock"></i>
+                                                    SSL auto
+                                                </span>
+                                                <span class="mini-pill pill-purple">
+                                                    <i class="fa-solid fa-code"></i>
+                                                    code-server auto
+                                                </span>
+                                            </div>
+
                                             <input type="text"
-                                                   name="accounts[{{ $username }}][code_editor_url]"
                                                    value="{{ $editorUrl }}"
-                                                   placeholder="https://code-{{ strtolower($username) }}.webscepts.com"
+                                                   readonly
                                                    class="dev-card-input">
-                                            <div class="text-xs text-slate-500 mt-2 font-bold">
-                                                Developer opens {{ $publicCodeEditorUrl }}, backend loads this URL.
+
+                                            <div class="text-xs text-blue-700 mt-2 font-bold break-all">
+                                                Developer opens: {{ $publicCodeEditorUrl }}
+                                            </div>
+
+                                            <div class="text-xs text-slate-500 mt-1 font-bold">
+                                                Backend URL is generated automatically. No manual domain needed.
                                             </div>
                                         </div>
                                     </div>
@@ -826,12 +890,12 @@ Password: {{ $login['password'] ?? '-' }}
 
                 <div class="p-6 border-t bg-slate-50 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                     <div class="text-sm text-slate-500 font-bold">
-                        Selected users will be created/updated with framework, permissions, database access, portal status and per-account Code Editor URL.
+                        Selected users will be created/updated. Developer Codes will automatically create DNS, install SSL and setup VS Code backend.
                     </div>
 
                     <button class="px-8 py-4 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black">
-                        <i class="fa-solid fa-user-plus mr-2"></i>
-                        Create / Update Selected Developer Logins
+                        <i class="fa-solid fa-wand-magic-sparkles mr-2"></i>
+                        Create / Update + Auto Setup VS Code SSL
                     </button>
                 </div>
             </div>
@@ -855,7 +919,7 @@ Password: {{ $login['password'] ?? '-' }}
             <div>
                 <h2 class="text-2xl font-black text-slate-900">Developer Portal Users</h2>
                 <p class="text-slate-500 mt-1">
-                    Existing Developer Codes users. You can update VS Code URL, project root, permissions, commands and database access here.
+                    Existing Developer Codes users. Save permissions here, and press Setup VS Code + SSL if backend domain or SSL is missing.
                 </p>
             </div>
 
@@ -875,8 +939,16 @@ Password: {{ $login['password'] ?? '-' }}
                         ?? $developer->vscode_url
                         ?? null;
 
-                    $fallbackDeveloperEditorUrl = $developerEditorUrl
-                        ?: $editorUrlForUser($developer->cpanel_username ?? '', $developer->cpanel_domain ?? '', []);
+                    $autoDeveloperEditorUrl = $autoEditorUrlForUser($developer->cpanel_username ?? $developer->ssh_username ?? $developer->name ?? 'developer');
+
+                    $fallbackDeveloperEditorUrl = $developerEditorUrl;
+
+                    if (!$fallbackDeveloperEditorUrl || str_contains($fallbackDeveloperEditorUrl, 'developercodes.webscepts.com/codeditor')) {
+                        $fallbackDeveloperEditorUrl = $autoDeveloperEditorUrl;
+                    }
+
+                    $needsSetup = empty($developerEditorUrl)
+                        || str_contains((string) $developerEditorUrl, 'developercodes.webscepts.com/codeditor');
 
                     $developerSearchText = strtolower(
                         ($developer->name ?? '') . ' ' .
@@ -890,61 +962,76 @@ Password: {{ $login['password'] ?? '-' }}
                     $updateRoute = Route::has('developers.settings.update') ? route('developers.settings.update', $developer->id) : '#';
                     $resetRoute = Route::has('developers.reset-password') ? route('developers.reset-password', $developer->id) : '#';
                     $deleteRoute = Route::has('developers.destroy') ? route('developers.destroy', $developer->id) : '#';
+                    $setupRoute = $setupRouteFor($developer);
+                    $updateFormId = 'developer-update-form-' . $developer->id;
                 @endphp
 
                 <div class="developer-row rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden"
                      data-search="{{ $developerSearchText }}">
 
-                    <form method="POST" action="{{ $updateRoute }}">
-                        @csrf
-                        @method('PUT')
-
-                        <div class="p-5 bg-slate-50 border-b flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
-                            <div class="flex items-start gap-3">
-                                <div class="w-12 h-12 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
-                                    <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
-                                </div>
-
-                                <div>
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <div class="font-black text-slate-900 text-lg">
-                                            {{ $developer->name ?? '-' }}
-                                        </div>
-
-                                        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
-                                            <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
-                                            {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
-                                        </span>
-                                    </div>
-
-                                    <div class="text-xs text-slate-500 mt-1 font-bold">{{ $developer->email ?? '-' }}</div>
-
-                                    <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 font-bold">
-                                        <span>cPanel: <b class="text-slate-800">{{ $developer->cpanel_username ?? '-' }}</b></span>
-                                        <span>Domain: <b class="text-slate-800">{{ $developer->cpanel_domain ?? '-' }}</b></span>
-                                        <span>Last Login: <b class="text-slate-800">{{ !empty($developer->last_login_at) ? \Carbon\Carbon::parse($developer->last_login_at)->diffForHumans() : 'Never' }}</b></span>
-                                    </div>
-                                </div>
+                    <div class="p-5 bg-slate-50 border-b flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                        <div class="flex items-start gap-3">
+                            <div class="w-12 h-12 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
+                                <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
                             </div>
 
-                            <div class="flex items-center gap-3">
-                                <input type="hidden" name="developer_portal_access" value="0">
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <div class="font-black text-slate-900 text-lg">
+                                        {{ $developer->name ?? '-' }}
+                                    </div>
 
-                                <label class="flex items-center gap-3 cursor-pointer">
-                                    <input type="checkbox"
-                                           class="portal-switch-input"
-                                           name="developer_portal_access"
-                                           value="1"
-                                           {{ $developerPortalEnabled ? 'checked' : '' }}
-                                           onchange="updateExistingPortalLabel(this)">
-                                    <span class="portal-switch"></span>
-                                </label>
+                                    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
+                                        <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
+                                        {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
+                                    </span>
 
-                                <span class="existing-portal-label px-3 py-1 rounded-full text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
-                                    Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
-                                </span>
+                                    @if($needsSetup)
+                                        <span class="mini-pill pill-red">
+                                            <i class="fa-solid fa-triangle-exclamation"></i>
+                                            VS Code SSL needs setup
+                                        </span>
+                                    @else
+                                        <span class="mini-pill pill-green">
+                                            <i class="fa-solid fa-lock"></i>
+                                            Backend URL saved
+                                        </span>
+                                    @endif
+                                </div>
+
+                                <div class="text-xs text-slate-500 mt-1 font-bold">{{ $developer->email ?? '-' }}</div>
+
+                                <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 font-bold">
+                                    <span>cPanel: <b class="text-slate-800">{{ $developer->cpanel_username ?? '-' }}</b></span>
+                                    <span>Domain: <b class="text-slate-800">{{ $developer->cpanel_domain ?? '-' }}</b></span>
+                                    <span>Last Login: <b class="text-slate-800">{{ !empty($developer->last_login_at) ? \Carbon\Carbon::parse($developer->last_login_at)->diffForHumans() : 'Never' }}</b></span>
+                                </div>
                             </div>
                         </div>
+
+                        <div class="flex items-center gap-3">
+                            <input form="{{ $updateFormId }}" type="hidden" name="developer_portal_access" value="0">
+
+                            <label class="flex items-center gap-3 cursor-pointer">
+                                <input form="{{ $updateFormId }}"
+                                       type="checkbox"
+                                       class="portal-switch-input"
+                                       name="developer_portal_access"
+                                       value="1"
+                                       {{ $developerPortalEnabled ? 'checked' : '' }}
+                                       onchange="updateExistingPortalLabel(this)">
+                                <span class="portal-switch"></span>
+                            </label>
+
+                            <span class="existing-portal-label px-3 py-1 rounded-full text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="{{ $updateRoute }}" id="{{ $updateFormId }}">
+                        @csrf
+                        @method('PUT')
 
                         <div class="p-5">
                             <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
@@ -971,30 +1058,63 @@ Password: {{ $login['password'] ?? '-' }}
                                                class="dev-card-input">
                                     </div>
 
-                                    <div>
-                                        <div class="dev-section-title">Code Editor Backend URL</div>
+                                    <div class="setup-box">
+                                        <div class="dev-section-title">Auto Code Editor Backend</div>
+
+                                        <input type="hidden" name="code_editor_url" value="{{ $fallbackDeveloperEditorUrl }}">
+
                                         <input type="text"
-                                               name="code_editor_url"
                                                value="{{ $fallbackDeveloperEditorUrl }}"
-                                               placeholder="https://dev.teengirls.lk or https://code-user.webscepts.com"
+                                               readonly
                                                class="dev-card-input">
 
-                                        <div class="text-xs text-blue-700 mt-2 font-bold break-all">
+                                        <div class="flex flex-wrap gap-2 mt-3">
+                                            <span class="mini-pill pill-blue">
+                                                <i class="fa-solid fa-globe"></i>
+                                                DNS auto by CloudNS
+                                            </span>
+                                            <span class="mini-pill pill-green">
+                                                <i class="fa-solid fa-lock"></i>
+                                                Let’s Encrypt SSL
+                                            </span>
+                                            <span class="mini-pill pill-purple">
+                                                <i class="fa-solid fa-code"></i>
+                                                code-server
+                                            </span>
+                                        </div>
+
+                                        <div class="text-xs text-blue-700 mt-3 font-bold break-all">
                                             Public URL: {{ $publicCodeEditorUrl }}
+                                        </div>
+
+                                        <div class="text-xs text-slate-500 mt-1 font-bold">
+                                            Backend URL is generated by username. Do not set it to the public `/codeditor` URL.
                                         </div>
                                     </div>
 
                                     <div class="rounded-2xl bg-blue-50 border border-blue-200 p-4">
-                                        <a href="{{ $publicCodeEditorUrl }}"
-                                           target="_blank"
-                                           class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
-                                            <i class="fa-solid fa-code"></i>
-                                            Open Public Editor
-                                        </a>
+                                        <div class="flex flex-wrap gap-2">
+                                            <a href="{{ $publicCodeEditorUrl }}"
+                                               target="_blank"
+                                               class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
+                                                <i class="fa-solid fa-code"></i>
+                                                Open Public Editor
+                                            </a>
+                                        </div>
 
                                         <div class="text-xs text-blue-700 mt-3 font-bold break-all">
                                             Backend: {{ $fallbackDeveloperEditorUrl ?: 'Not configured' }}
                                         </div>
+
+                                        @if($needsSetup)
+                                            <div class="mt-3 rounded-xl bg-red-50 border border-red-200 p-3 text-xs font-bold text-red-700">
+                                                SSL or backend URL is not ready. Press <b>Setup VS Code + SSL</b> below.
+                                            </div>
+                                        @else
+                                            <div class="mt-3 rounded-xl bg-green-50 border border-green-200 p-3 text-xs font-bold text-green-700">
+                                                Backend URL saved. Press setup again only if DNS/SSL/code-server is missing or broken.
+                                            </div>
+                                        @endif
                                     </div>
                                 </div>
 
@@ -1089,48 +1209,63 @@ Password: {{ $login['password'] ?? '-' }}
                                     </div>
                                 </div>
                             </div>
-
-                            <div class="mt-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 border-t pt-5">
-                                <div class="text-sm text-slate-500 font-bold">
-                                    Save changes to update this developer’s editor URL and permissions.
-                                </div>
-
-                                <div class="flex justify-end gap-2">
-                                    <button type="submit"
-                                            class="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black text-sm">
-                                        <i class="fa-solid fa-floppy-disk mr-1"></i>
-                                        Save Changes
-                                    </button>
+                        </div>
                     </form>
 
-                                    @if(Route::has('developers.reset-password'))
-                                        <form method="POST" action="{{ $resetRoute }}">
-                                            @csrf
-                                            <button type="submit"
-                                                    class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm">
-                                                <i class="fa-solid fa-key mr-1"></i>
-                                                Reset
-                                            </button>
-                                        </form>
-                                    @endif
-
-                                    @if(Route::has('developers.destroy'))
-                                        <form method="POST"
-                                              action="{{ $deleteRoute }}"
-                                              onsubmit="return confirm('Delete this developer login?')">
-                                            @csrf
-                                            @method('DELETE')
-
-                                            <button type="submit"
-                                                    class="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-sm">
-                                                <i class="fa-solid fa-trash mr-1"></i>
-                                                Delete
-                                            </button>
-                                        </form>
-                                    @endif
-                                </div>
-                            </div>
+                    <div class="p-5 border-t bg-slate-50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                        <div class="text-sm text-slate-500 font-bold">
+                            Save permissions separately. Use Setup VS Code + SSL to create DNS, Nginx, code-server and Let’s Encrypt SSL.
                         </div>
+
+                        <div class="flex flex-wrap justify-end gap-2">
+                            <button type="submit"
+                                    form="{{ $updateFormId }}"
+                                    class="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black text-sm">
+                                <i class="fa-solid fa-floppy-disk mr-1"></i>
+                                Save Changes
+                            </button>
+
+                            @if(Route::has('developers.code-editor.setup'))
+                                <form method="POST"
+                                      action="{{ $setupRoute }}"
+                                      onsubmit="return confirm('Setup DNS, Nginx, code-server and Let\\'s Encrypt SSL for this developer?');">
+                                    @csrf
+
+                                    <button type="submit"
+                                            class="px-5 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-sm">
+                                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>
+                                        Setup VS Code + SSL
+                                    </button>
+                                </form>
+                            @endif
+
+                            @if(Route::has('developers.reset-password'))
+                                <form method="POST" action="{{ $resetRoute }}">
+                                    @csrf
+                                    <button type="submit"
+                                            class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm">
+                                        <i class="fa-solid fa-key mr-1"></i>
+                                        Reset
+                                    </button>
+                                </form>
+                            @endif
+
+                            @if(Route::has('developers.destroy'))
+                                <form method="POST"
+                                      action="{{ $deleteRoute }}"
+                                      onsubmit="return confirm('Delete this developer login?')">
+                                    @csrf
+                                    @method('DELETE')
+
+                                    <button type="submit"
+                                            class="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-sm">
+                                        <i class="fa-solid fa-trash mr-1"></i>
+                                        Delete
+                                    </button>
+                                </form>
+                            @endif
+                        </div>
+                    </div>
                 </div>
             @empty
                 <div class="p-10 text-center">
