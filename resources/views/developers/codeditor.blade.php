@@ -25,6 +25,21 @@
             border: 0;
             background: #ffffff;
         }
+
+        .loader {
+            width: 42px;
+            height: 42px;
+            border: 4px solid rgba(255,255,255,.2);
+            border-top-color: #3b82f6;
+            border-radius: 999px;
+            animation: spin .8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 
@@ -64,26 +79,15 @@
 
     $projectRoot = rtrim($projectRoot, '/');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Backend editor URL
-    |--------------------------------------------------------------------------
-    | Must be actual code-server / VS Code backend.
-    | Correct:
-    | https://code-devteengirls.webscepts.com
-    |
-    | Wrong:
-    | https://developercodes.webscepts.com/codeditor
-    |--------------------------------------------------------------------------
-    */
-
     $editorBackendUrl = $editorBackendUrl
         ?? $developer->code_editor_url
         ?? $developer->vscode_url
         ?? null;
 
     if (!$editorBackendUrl && !empty($cpanelUsername)) {
-        $editorBackendUrl = 'https://code-' . strtolower($cpanelUsername) . '.webscepts.com';
+        $safeUsername = strtolower(preg_replace('/[^a-zA-Z0-9\-]/', '-', $cpanelUsername));
+        $safeUsername = trim($safeUsername, '-');
+        $editorBackendUrl = 'https://code-' . $safeUsername . '.webscepts.com';
     }
 
     if ($editorBackendUrl && !Str::startsWith($editorBackendUrl, ['http://', 'https://'])) {
@@ -104,14 +108,6 @@
         ? route('developer.logout')
         : url('/logout');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Stop iframe recursion
-    |--------------------------------------------------------------------------
-    | If backend URL is same as public codeditor route, do not iframe it.
-    |--------------------------------------------------------------------------
-    */
-
     $isSelfIframe = false;
 
     if ($editorBackendUrl) {
@@ -119,7 +115,8 @@
         $cleanPublic = rtrim($currentPublicEditorUrl, '/');
 
         $isSelfIframe = $cleanBackend === $cleanPublic
-            || str_contains($cleanBackend, 'developercodes.webscepts.com/codeditor');
+            || str_contains($cleanBackend, 'developercodes.webscepts.com/codeditor')
+            || str_ends_with($cleanBackend, '/codeditor');
     }
 @endphp
 
@@ -151,6 +148,15 @@
             <span class="hidden xl:inline-flex px-4 py-2 rounded-full bg-white/10 border border-white/10 text-xs font-black max-w-[380px] truncate">
                 {{ $projectRoot }}
             </span>
+
+            @if($editorBackendUrl && !$isSelfIframe)
+                <a href="{{ $editorBackendUrl }}"
+                   target="_blank"
+                   class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm transition">
+                    <i class="fa-solid fa-up-right-from-square mr-2"></i>
+                    Open Backend
+                </a>
+            @endif
 
             <a href="{{ $workspaceUrl }}"
                class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-sm transition">
@@ -206,15 +212,15 @@
                     </div>
 
                     <h2 class="text-2xl font-black text-slate-900 mt-5">
-                        Code Editor URL Missing
+                        VS Code Backend URL Missing
                     </h2>
 
                     <p class="text-slate-500 mt-2 font-bold">
-                        Add a code-server backend URL for this developer account.
+                        Go to the admin cPanel Developer Logins page and press Setup VS Code + SSL for this developer account.
                     </p>
 
                     <div class="mt-5 rounded-2xl bg-slate-100 border border-slate-200 p-4 text-left text-sm font-bold text-slate-700">
-                        Correct example:
+                        Correct backend example:
                         <div class="mt-1 text-blue-700 break-all">
                             https://code-{{ strtolower($cpanelUsername) }}.webscepts.com
                         </div>
@@ -239,7 +245,7 @@
                     </h2>
 
                     <p class="text-slate-500 mt-2 font-bold">
-                        The backend URL is pointing back to this same Developer Codes page, so it creates a nested iframe.
+                        The backend URL is pointing back to the public Developer Codes page. It must point to the real code-server backend.
                     </p>
 
                     <div class="mt-5 rounded-2xl bg-red-50 border border-red-200 p-4 text-left text-sm font-bold text-red-700">
@@ -264,11 +270,25 @@
             </div>
 
         @else
+            <div id="loadingBox" class="absolute inset-0 z-10 flex items-center justify-center bg-slate-950 text-white">
+                <div class="text-center">
+                    <div class="loader mx-auto"></div>
+                    <div class="mt-4 font-black">
+                        Loading Web VS Code...
+                    </div>
+                    <div class="mt-2 text-xs text-slate-400 break-all max-w-xl">
+                        {{ $editorBackendUrl }}
+                    </div>
+                </div>
+            </div>
+
             <iframe
+                id="codeEditorFrame"
                 src="{{ $editorBackendUrl }}"
                 class="editor-frame"
                 allow="clipboard-read; clipboard-write; fullscreen"
-                referrerpolicy="no-referrer-when-downgrade">
+                referrerpolicy="no-referrer-when-downgrade"
+                onload="document.getElementById('loadingBox')?.remove();">
             </iframe>
         @endif
 
