@@ -103,10 +103,10 @@ class DeveloperCpanelImportController extends Controller
 
             $projectRoot = trim($account['project_root'] ?? '') ?: $frameworkConfig['project_root'];
             $allowedPath = $projectRoot ?: ('/home/' . $cpanelUsername);
-
             $codeEditorUrl = 'https://' . $this->codeEditorDomainForUsername($cpanelUsername);
             $portalAccess = $this->boolFromArray($account, 'developer_portal_access', true);
-            $temporaryPassword = Str::password(16);
+
+            $temporaryPassword = Str::random(16);
 
             $dbType = strtolower(trim($account['db_type'] ?? 'mysql'));
 
@@ -152,7 +152,7 @@ class DeveloperCpanelImportController extends Controller
                 'can_run_build' => !empty($account['can_run_build']),
                 'can_run_python' => !empty($account['can_run_python']),
                 'can_restart_app' => !empty($account['can_restart_app']),
-                'can_view_files' => !empty($account['can_view_files']),
+                'can_view_files' => !empty($account['can_view_files']) || true,
                 'can_edit_files' => !empty($account['can_edit_files']),
                 'can_delete_files' => !empty($account['can_delete_files']),
 
@@ -178,7 +178,7 @@ class DeveloperCpanelImportController extends Controller
 
             try {
                 $setupResult = $this->provisionCodeEditorForDeveloper($developer);
-                $setupMessage = 'VS Code SSL ready: ' . $setupResult['url'];
+                $setupMessage = 'VS Code ready: ' . $setupResult['url'];
             } catch (\Throwable $setupError) {
                 $setupMessage = 'VS Code setup failed: ' . $setupError->getMessage();
             }
@@ -286,6 +286,7 @@ class DeveloperCpanelImportController extends Controller
 
         $payload = [
             'server_id' => $server->id,
+
             'name' => $cpanelUsername,
             'email' => $contactEmail,
             'contact_email' => $contactEmail,
@@ -344,7 +345,7 @@ class DeveloperCpanelImportController extends Controller
 
         try {
             $setupResult = $this->provisionCodeEditorForDeveloper($developer);
-            $setupMessage = 'VS Code SSL ready: ' . $setupResult['url'];
+            $setupMessage = 'VS Code ready: ' . $setupResult['url'];
         } catch (\Throwable $setupError) {
             $setupMessage = 'VS Code setup failed: ' . $setupError->getMessage();
         }
@@ -403,14 +404,20 @@ class DeveloperCpanelImportController extends Controller
 
         $enabled = $request->boolean('developer_portal_access');
 
+        $username = $developer->cpanel_username
+            ?: $developer->ssh_username
+            ?: $developer->name
+            ?: 'developer';
+
         $codeEditorUrl = trim($data['code_editor_url'] ?? '');
 
         if (
             !$codeEditorUrl ||
             str_contains($codeEditorUrl, 'developercodes.webscepts.com/codeditor') ||
-            str_ends_with(rtrim($codeEditorUrl, '/'), '/codeditor')
+            str_contains($codeEditorUrl, 'developercodes.webscepts.com/codeeditor') ||
+            str_ends_with(rtrim($codeEditorUrl, '/'), '/codeditor') ||
+            str_ends_with(rtrim($codeEditorUrl, '/'), '/codeeditor')
         ) {
-            $username = $developer->cpanel_username ?: $developer->ssh_username ?: $developer->name;
             $codeEditorUrl = 'https://' . $this->codeEditorDomainForUsername($username);
         }
 
@@ -418,6 +425,7 @@ class DeveloperCpanelImportController extends Controller
             'framework' => $data['framework'] ?? $developer->framework,
             'project_root' => $data['project_root'] ?? $developer->project_root,
             'allowed_project_path' => $data['project_root'] ?? $developer->allowed_project_path,
+
             'code_editor_url' => $codeEditorUrl,
             'vscode_url' => $codeEditorUrl,
 
@@ -458,7 +466,7 @@ class DeveloperCpanelImportController extends Controller
 
             return back()->with(
                 'success',
-                'VS Code, CloudNS DNS, proxy, code-server and SSL setup completed: ' . $result['url']
+                'VS Code visual web UI setup completed: ' . $result['url']
             );
         } catch (\Throwable $e) {
             return back()->with(
@@ -481,6 +489,7 @@ class DeveloperCpanelImportController extends Controller
         foreach ($developers as $developer) {
             try {
                 $result = $this->provisionCodeEditorForDeveloper($developer);
+
                 $success++;
                 $messages[] = ($developer->cpanel_username ?? $developer->email) . ': ready - ' . $result['url'];
             } catch (\Throwable $e) {
@@ -496,7 +505,7 @@ class DeveloperCpanelImportController extends Controller
 
     public function resetPassword(DeveloperUser $developer)
     {
-        $temporaryPassword = Str::password(16);
+        $temporaryPassword = Str::random(16);
 
         $payload = [
             'password' => bcrypt($temporaryPassword),
@@ -534,6 +543,35 @@ class DeveloperCpanelImportController extends Controller
         ));
 
         return back()->with('success', 'Developer status updated.');
+    }
+
+    public function portalAccess(Request $request, DeveloperUser $developer)
+    {
+        $enabled = $request->boolean('enabled', $request->boolean('developer_portal_access', true));
+
+        $developer->update($this->filterDeveloperColumns(
+            $this->portalAccessPayload($enabled)
+        ));
+
+        return back()->with('success', 'Developer portal access updated.');
+    }
+
+    public function enablePortal(DeveloperUser $developer)
+    {
+        $developer->update($this->filterDeveloperColumns(
+            $this->portalAccessPayload(true)
+        ));
+
+        return back()->with('success', 'Developer portal enabled.');
+    }
+
+    public function disablePortal(DeveloperUser $developer)
+    {
+        $developer->update($this->filterDeveloperColumns(
+            $this->portalAccessPayload(false)
+        ));
+
+        return back()->with('success', 'Developer portal disabled.');
     }
 
     public function destroy(DeveloperUser $developer)
@@ -587,8 +625,19 @@ class DeveloperCpanelImportController extends Controller
 
         $this->installCodeServerOnRemote($ssh);
         $this->createRemoteCodeServerService($ssh, $developer, $domain, $port, $projectRoot);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Important:
+        |--------------------------------------------------------------------------
+        | Run proxy before SSL, then run it again after SSL.
+        | cPanel/certbot can rebuild Apache vhosts, so this repairs the include again.
+        |--------------------------------------------------------------------------
+        */
         $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
         $this->installRemoteLetsEncryptSsl($ssh, $domain, $username);
+        $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
+
         $this->remoteCodeEditorHealthCheck($ssh, $domain, $port);
 
         $developer->update(
@@ -612,14 +661,26 @@ class DeveloperCpanelImportController extends Controller
         $command = <<<'BASH'
 set -e
 
+echo "========================================"
+echo "Installing code-server if missing"
+echo "========================================"
+
 if ! command -v code-server >/dev/null 2>&1; then
     curl -fsSL https://code-server.dev/install.sh | sh
 fi
 
+CODE_SERVER_PATH=$(command -v code-server || true)
+
+if [ -z "$CODE_SERVER_PATH" ]; then
+    echo "code-server installation failed. code-server binary not found."
+    exit 1
+fi
+
+echo "code-server path: $CODE_SERVER_PATH"
 code-server --version || true
 BASH;
 
-        $this->runRemoteCommand($ssh, $command, 600);
+        $this->runRemoteCommand($ssh, $command, 700);
     }
 
     private function createRemoteCodeServerService(
@@ -649,12 +710,20 @@ BASH;
         }
 
         if (!$password) {
-            $password = Str::password(22);
+            $password = Str::random(24);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Keep code-server password safe for systemd.
+        |--------------------------------------------------------------------------
+        | Avoid Str::password() symbols because systemd Environment line can break.
+        |--------------------------------------------------------------------------
+        */
+        $password = preg_replace('/[^a-zA-Z0-9]/', '', $password) ?: Str::random(24);
 
         $safeUser = $this->shellArg($username);
         $safeProjectRoot = $this->shellArg($projectRoot);
-        $safeServiceName = $this->shellArg($serviceName);
 
         $serviceContent = <<<SERVICE
 [Unit]
@@ -665,7 +734,7 @@ After=network.target
 Type=simple
 User={$username}
 WorkingDirectory={$projectRoot}
-Environment=PASSWORD={$password}
+Environment="PASSWORD={$password}"
 ExecStart=/usr/bin/code-server --bind-addr 127.0.0.1:{$port} --auth password {$projectRoot}
 Restart=always
 RestartSec=5
@@ -678,6 +747,14 @@ SERVICE;
 
         $command = <<<BASH
 set -e
+
+echo "========================================"
+echo "Creating code-server service"
+echo "User: {$username}"
+echo "Service: {$serviceName}.service"
+echo "Port: {$port}"
+echo "Project: {$projectRoot}"
+echo "========================================"
 
 CODE_SERVER_PATH=\$(command -v code-server || echo /usr/bin/code-server)
 
@@ -695,24 +772,29 @@ printf "%s" {$safeServiceContent} > /etc/systemd/system/{$serviceName}.service
 sed -i "s#ExecStart=/usr/bin/code-server#ExecStart=\$CODE_SERVER_PATH#g" /etc/systemd/system/{$serviceName}.service
 
 systemctl daemon-reload
-systemctl enable {$safeServiceName}
-systemctl restart {$safeServiceName}
+systemctl enable {$serviceName}.service
+systemctl restart {$serviceName}.service
 
-sleep 3
+sleep 5
 
-if ! systemctl is-active --quiet {$safeServiceName}; then
-    systemctl status {$safeServiceName} --no-pager
+systemctl status {$serviceName}.service --no-pager || true
+
+if ! systemctl is-active --quiet {$serviceName}.service; then
+    echo "FAILED: {$serviceName}.service is not active."
+    journalctl -u {$serviceName}.service -n 120 --no-pager || true
     exit 1
 fi
 
 if ! ss -tulpn | grep -q ":{$port}"; then
-    echo "code-server service started, but port {$port} is not listening."
-    systemctl status {$safeServiceName} --no-pager
+    echo "FAILED: code-server service started, but port {$port} is not listening."
+    journalctl -u {$serviceName}.service -n 120 --no-pager || true
     exit 1
 fi
+
+echo "SUCCESS: code-server service running on 127.0.0.1:{$port}"
 BASH;
 
-        $this->runRemoteCommand($ssh, $command, 300);
+        $this->runRemoteCommand($ssh, $command, 400);
     }
 
     private function createRemoteCodeEditorProxy(SSH2 $ssh, string $domain, int $port, string $cpanelUsername): void
@@ -724,36 +806,88 @@ DOMAIN="{$domain}"
 PORT="{$port}"
 CPANEL_USER="{$cpanelUsername}"
 
-echo "Creating reverse proxy for \$DOMAIN to 127.0.0.1:\$PORT"
+echo "========================================"
+echo "Creating VS Code reverse proxy"
+echo "Domain: \$DOMAIN"
+echo "Port: \$PORT"
+echo "cPanel User: \$CPANEL_USER"
+echo "========================================"
 
 if [ -x /scripts/rebuildhttpdconf ] && [ -d /etc/apache2/conf.d/userdata ]; then
-    echo "cPanel detected. Creating Apache userdata proxy includes."
+    echo "cPanel server detected."
+
+    OWNER=""
+
+    if [ -x /scripts/whoowns ]; then
+        OWNER=\$(/scripts/whoowns "\$DOMAIN" 2>/dev/null || true)
+    fi
+
+    if [ -z "\$OWNER" ]; then
+        OWNER="\$CPANEL_USER"
+    fi
+
+    echo "Detected owner: \$OWNER"
+
+    echo "Installing Apache proxy modules if missing..."
+    if command -v yum >/dev/null 2>&1; then
+        yum install -y ea-apache24-mod_proxy ea-apache24-mod_proxy_http ea-apache24-mod_proxy_wstunnel ea-apache24-mod_rewrite ea-apache24-mod_headers || true
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        dnf install -y ea-apache24-mod_proxy ea-apache24-mod_proxy_http ea-apache24-mod_proxy_wstunnel ea-apache24-mod_rewrite ea-apache24-mod_headers || true
+    fi
+
+    echo "Creating cPanel userdata includes..."
 
     for SSLTYPE in std ssl; do
-        INCLUDE_DIR="/etc/apache2/conf.d/userdata/\$SSLTYPE/2_4/\$CPANEL_USER/\$DOMAIN"
-        INCLUDE_FILE="\$INCLUDE_DIR/code-server.conf"
+        for APACHEVER in 2_4 2.4; do
+            INCLUDE_DIR="/etc/apache2/conf.d/userdata/\$SSLTYPE/\$APACHEVER/\$OWNER/\$DOMAIN"
+            INCLUDE_FILE="\$INCLUDE_DIR/code-server.conf"
 
-        mkdir -p "\$INCLUDE_DIR"
+            mkdir -p "\$INCLUDE_DIR"
 
-        cat > "\$INCLUDE_FILE" <<APACHECONF
-ProxyPreserveHost On
-ProxyRequests Off
+            cat > "\$INCLUDE_FILE" <<APACHECONF
+<IfModule mod_proxy.c>
+    ProxyPreserveHost On
+    ProxyRequests Off
 
-RewriteEngine On
-RewriteCond %{HTTP:Upgrade} =websocket [NC]
-RewriteRule /(.*) ws://127.0.0.1:\$PORT/\$1 [P,L]
+    <IfModule mod_rewrite.c>
+        RewriteEngine On
+        RewriteCond %{HTTP:Upgrade} =websocket [NC]
+        RewriteRule /(.*) ws://127.0.0.1:\$PORT/\$1 [P,L]
+    </IfModule>
 
-ProxyPass / http://127.0.0.1:\$PORT/
-ProxyPassReverse / http://127.0.0.1:\$PORT/
+    ProxyPass / http://127.0.0.1:\$PORT/ retry=0 timeout=86400
+    ProxyPassReverse / http://127.0.0.1:\$PORT/
 
-RequestHeader set X-Forwarded-Proto "https"
-RequestHeader set X-Forwarded-Port "443"
+    <IfModule mod_headers.c>
+        RequestHeader set X-Forwarded-Proto "https"
+        RequestHeader set X-Forwarded-Port "443"
+        Header always unset X-Frame-Options
+        Header always set Content-Security-Policy "frame-ancestors 'self' https://developercodes.webscepts.com"
+    </IfModule>
+</IfModule>
 APACHECONF
+
+            echo "Created: \$INCLUDE_FILE"
+        done
     done
 
-    /scripts/ensure_vhost_includes --user="\$CPANEL_USER" || true
+    echo "Ensuring cPanel vhost includes..."
+    /scripts/ensure_vhost_includes --user="\$OWNER" || true
+    /scripts/ensure_vhost_includes --all-users || true
+
+    echo "Rebuilding Apache config..."
     /scripts/rebuildhttpdconf
 
+    echo "Checking Apache config..."
+    if command -v apachectl >/dev/null 2>&1; then
+        apachectl configtest
+    elif command -v httpd >/dev/null 2>&1; then
+        httpd -t
+    fi
+
+    echo "Restarting Apache..."
     if systemctl list-unit-files | grep -q '^httpd'; then
         systemctl restart httpd
     elif systemctl list-unit-files | grep -q '^apache2'; then
@@ -762,10 +896,25 @@ APACHECONF
         service httpd restart || service apache2 restart
     fi
 
+    echo "Apache proxy modules loaded:"
+    if command -v httpd >/dev/null 2>&1; then
+        httpd -M 2>/dev/null | grep -E "proxy|rewrite|headers" || true
+    elif command -v apache2ctl >/dev/null 2>&1; then
+        apache2ctl -M 2>/dev/null | grep -E "proxy|rewrite|headers" || true
+    fi
+
+    echo "Apache vhost check:"
+    if command -v httpd >/dev/null 2>&1; then
+        httpd -S 2>&1 | grep "\$DOMAIN" || true
+    elif command -v apache2ctl >/dev/null 2>&1; then
+        apache2ctl -S 2>&1 | grep "\$DOMAIN" || true
+    fi
+
+    echo "cPanel Apache reverse proxy created."
     exit 0
 fi
 
-echo "Non-cPanel server detected. Creating Nginx proxy."
+echo "Non-cPanel server detected. Creating Nginx reverse proxy."
 
 if ! command -v nginx >/dev/null 2>&1; then
     echo "Nginx is not installed on target server."
@@ -791,6 +940,9 @@ server {
         proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \\$scheme;
 
+        proxy_hide_header X-Frame-Options;
+        add_header Content-Security-Policy "frame-ancestors 'self' https://developercodes.webscepts.com" always;
+
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;
         proxy_buffering off;
@@ -800,9 +952,11 @@ NGINXCONF
 
 nginx -t
 systemctl reload nginx
+
+echo "Nginx reverse proxy created."
 BASH;
 
-        $this->runRemoteCommand($ssh, $command, 180);
+        $this->runRemoteCommand($ssh, $command, 300);
     }
 
     private function installRemoteLetsEncryptSsl(SSH2 $ssh, string $domain, string $cpanelUsername): void
@@ -820,7 +974,11 @@ DOMAIN={$safeDomain}
 EMAIL={$safeEmail}
 CPANEL_USER={$safeUser}
 
-echo "Installing or repairing SSL for \$DOMAIN"
+echo "========================================"
+echo "Installing or repairing SSL"
+echo "Domain: \$DOMAIN"
+echo "User: \$CPANEL_USER"
+echo "========================================"
 
 if [ -x /usr/local/cpanel/bin/autossl_check ]; then
     echo "cPanel AutoSSL detected. Running AutoSSL for user \$CPANEL_USER."
@@ -864,9 +1022,11 @@ fi
 if systemctl list-unit-files | grep -q '^nginx'; then
     nginx -t && systemctl reload nginx || true
 fi
+
+echo "SSL repair completed."
 BASH;
 
-        $this->runRemoteCommand($ssh, $command, 700);
+        $this->runRemoteCommand($ssh, $command, 800);
     }
 
     private function remoteCodeEditorHealthCheck(SSH2 $ssh, string $domain, int $port): void
@@ -877,32 +1037,61 @@ set -e
 DOMAIN="{$domain}"
 PORT="{$port}"
 
+echo "========================================"
+echo "VS Code backend health check"
+echo "Domain: \$DOMAIN"
+echo "Port: \$PORT"
+echo "========================================"
+
 echo "Checking local code-server port..."
 
-if ! curl -I --max-time 10 "http://127.0.0.1:\$PORT" >/tmp/code-server-health.txt 2>&1; then
-    cat /tmp/code-server-health.txt
-    echo "code-server is not responding on 127.0.0.1:\$PORT"
+if ! curl -I --max-time 10 "http://127.0.0.1:\$PORT" >/tmp/code-server-local-health.txt 2>&1; then
+    cat /tmp/code-server-local-health.txt
+    echo "FAILED: code-server is not responding on 127.0.0.1:\$PORT"
     exit 1
 fi
 
+cat /tmp/code-server-local-health.txt || true
+
 echo "Checking public backend URL..."
 
-HTML=\$(curl -Lk --max-time 20 "https://\$DOMAIN" || true)
+HTML=\$(curl -Lk --max-time 25 "https://\$DOMAIN" || true)
+
+echo "\$HTML" | head -n 30
 
 if echo "\$HTML" | grep -qi "Index of /"; then
-    echo "Backend domain is still showing Apache/cPanel Index of /. Proxy was not applied."
+    echo "FAILED: Backend domain is still showing Apache Index of /."
+    echo "This means Apache proxy include was not applied."
+    echo "Check cPanel owner and userdata include path."
     exit 1
 fi
 
 if echo "\$HTML" | grep -qi "cgi-bin"; then
-    echo "Backend domain is still showing cPanel cgi-bin index. Proxy was not applied."
+    echo "FAILED: Backend domain is still showing cPanel cgi-bin folder."
+    echo "This means domain is still using normal cPanel document root."
     exit 1
 fi
 
-echo "VS Code backend health check passed."
+if echo "\$HTML" | grep -qi "code-server"; then
+    echo "SUCCESS: code-server detected."
+    exit 0
+fi
+
+if echo "\$HTML" | grep -qi "VS Code"; then
+    echo "SUCCESS: VS Code detected."
+    exit 0
+fi
+
+if echo "\$HTML" | grep -qi "password"; then
+    echo "SUCCESS: code-server login page detected."
+    exit 0
+fi
+
+echo "WARNING: Backend is not Index page, but VS Code marker was not found."
+echo "Health check accepted because Apache Index is gone."
 BASH;
 
-        $this->runRemoteCommand($ssh, $command, 120);
+        $this->runRemoteCommand($ssh, $command, 160);
     }
 
     private function codeEditorSubdomainForUsername(string $username): string
@@ -1043,7 +1232,7 @@ BASH;
         }
 
         $ssh = new SSH2($host, $port);
-        $ssh->setTimeout(60);
+        $ssh->setTimeout(80);
 
         if (!$ssh->login($username, $password)) {
             throw new \Exception('SSH login failed for server ' . $host . ':' . $port . ' as ' . $username);
@@ -1075,6 +1264,36 @@ BASH;
 
     private function fetchCpanelAccounts(Server $server): array
     {
+        /*
+        |--------------------------------------------------------------------------
+        | First try WHM through SSH.
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+            $ssh = $this->connectServerSsh($server);
+
+            $output = $this->runRemoteCommand(
+                $ssh,
+                'whmapi1 listaccts --output=json',
+                120
+            );
+
+            $json = json_decode($output, true);
+
+            $rawAccounts = data_get($json, 'data.acct', []);
+
+            if (is_array($rawAccounts) && count($rawAccounts) > 0) {
+                return $this->mapWhmAccounts($rawAccounts, $server);
+            }
+        } catch (\Throwable $e) {
+            /*
+            |--------------------------------------------------------------------------
+            | Fall back to WHM HTTP API below.
+            |--------------------------------------------------------------------------
+            */
+        }
+
         $credentials = $this->serverCredentials($server);
 
         $host = $credentials['host'];
@@ -1086,7 +1305,7 @@ BASH;
         }
 
         if (!$username) {
-            throw new \Exception('WHM username is missing. Add whm_username, root_username, username, or user on server record.');
+            throw new \Exception('WHM username is missing. Add whm_username, root_username, username, user, or ssh_username on server record.');
         }
 
         if (!$password) {
@@ -1098,7 +1317,7 @@ BASH;
         $url = 'https://' . $host . ':2087/json-api/listaccts';
 
         $response = Http::withoutVerifying()
-            ->timeout(60)
+            ->timeout(80)
             ->acceptJson()
             ->withOptions([
                 'verify' => false,
@@ -1139,6 +1358,11 @@ BASH;
             throw new \Exception('No cPanel accounts found from WHM response.');
         }
 
+        return $this->mapWhmAccounts($rawAccounts, $server);
+    }
+
+    private function mapWhmAccounts(array $rawAccounts, Server $server): array
+    {
         return collect($rawAccounts)
             ->map(function ($account) use ($server) {
                 $user = $account['user'] ?? null;
@@ -1190,7 +1414,7 @@ BASH;
                     'developer_portal_access' => true,
 
                     'can_view_files' => true,
-                    'can_clear_cache' => in_array($framework, ['laravel', 'php', 'wordpress'], true),
+                    'can_clear_cache' => in_array($framework, ['laravel', 'php', 'wordpress', 'custom'], true),
                     'can_git_pull' => false,
                     'can_composer' => in_array($framework, ['laravel', 'php'], true),
                     'can_npm' => in_array($framework, ['react', 'vue', 'angular', 'node', 'nextjs', 'nuxt', 'svelte'], true),
@@ -1255,6 +1479,7 @@ BASH;
             'ip',
             'ip_address',
             'server_ip',
+            'public_ip',
         ]);
 
         $username = $this->serverValue($server, [
@@ -1351,6 +1576,7 @@ BASH;
             'ip',
             'ip_address',
             'server_ip',
+            'public_ip',
         ]);
 
         if (!$host) {
