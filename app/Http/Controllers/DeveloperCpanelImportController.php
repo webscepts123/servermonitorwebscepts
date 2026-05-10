@@ -23,7 +23,6 @@ class DeveloperCpanelImportController extends Controller
             ->keyBy('cpanel_username');
 
         $cpanelAccounts = session('cpanel_accounts', []);
-
         $frameworks = $this->frameworkOptions();
 
         return view('developers.cpanel-import', compact(
@@ -68,12 +67,11 @@ class DeveloperCpanelImportController extends Controller
         ]);
 
         $server = Server::findOrFail($data['server_id']);
-
         $selected = $data['selected'] ?? [];
         $accounts = $data['accounts'] ?? [];
 
         if (empty($selected)) {
-            return back()->with('error', 'Please tick at least one cPanel account to add to Developer Codes.');
+            return back()->with('error', 'Please tick at least one cPanel account.');
         }
 
         $createdLogins = [];
@@ -152,7 +150,7 @@ class DeveloperCpanelImportController extends Controller
                 'can_run_build' => !empty($account['can_run_build']),
                 'can_run_python' => !empty($account['can_run_python']),
                 'can_restart_app' => !empty($account['can_restart_app']),
-                'can_view_files' => !empty($account['can_view_files']) || true,
+                'can_view_files' => true,
                 'can_edit_files' => !empty($account['can_edit_files']),
                 'can_delete_files' => !empty($account['can_delete_files']),
 
@@ -168,9 +166,7 @@ class DeveloperCpanelImportController extends Controller
             $payload = array_merge($payload, $this->portalAccessPayload($portalAccess));
 
             $developer = DeveloperUser::updateOrCreate(
-                [
-                    'cpanel_username' => $cpanelUsername,
-                ],
+                ['cpanel_username' => $cpanelUsername],
                 $this->filterDeveloperColumns($payload)
             );
 
@@ -257,8 +253,7 @@ class DeveloperCpanelImportController extends Controller
             return back()->with('error', 'cPanel login failed: ' . $e->getMessage());
         }
 
-        $domain = $data['cpanel_domain']
-            ?: ($accountInfo['domain'] ?? null);
+        $domain = $data['cpanel_domain'] ?: ($accountInfo['domain'] ?? null);
 
         $contactEmail = $data['contact_email']
             ?: ($accountInfo['email'] ?? null)
@@ -335,9 +330,7 @@ class DeveloperCpanelImportController extends Controller
         $payload = array_merge($payload, $this->portalAccessPayload($portalAccess));
 
         $developer = DeveloperUser::updateOrCreate(
-            [
-                'cpanel_username' => $cpanelUsername,
-            ],
+            ['cpanel_username' => $cpanelUsername],
             $this->filterDeveloperColumns($payload)
         );
 
@@ -489,7 +482,6 @@ class DeveloperCpanelImportController extends Controller
         foreach ($developers as $developer) {
             try {
                 $result = $this->provisionCodeEditorForDeveloper($developer);
-
                 $success++;
                 $messages[] = ($developer->cpanel_username ?? $developer->email) . ': ready - ' . $result['url'];
             } catch (\Throwable $e) {
@@ -621,24 +613,38 @@ class DeveloperCpanelImportController extends Controller
 
         $this->createOrUpdateCloudnsARecord($subdomain, $serverIp);
 
-        $ssh = $this->connectServerSsh($server);
+        $ssh = $this->connectServerSsh($server, $developer);
 
-        $this->installCodeServerOnRemote($ssh);
-        $this->createRemoteCodeServerService($ssh, $developer, $domain, $port, $projectRoot);
+        $sshUser = $this->remoteWhoami($ssh);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Important:
-        |--------------------------------------------------------------------------
-        | Run proxy before SSL, then run it again after SSL.
-        | cPanel/certbot can rebuild Apache vhosts, so this repairs the include again.
-        |--------------------------------------------------------------------------
-        */
-        $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
-        $this->installRemoteLetsEncryptSsl($ssh, $domain, $username);
-        $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
+        if ($sshUser === 'root') {
+            $this->installCodeServerOnRemote($ssh);
+            $this->createRemoteCodeServerService($ssh, $developer, $domain, $port, $projectRoot);
 
-        $this->remoteCodeEditorHealthCheck($ssh, $domain, $port);
+            $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
+            $this->installRemoteLetsEncryptSsl($ssh, $domain, $username);
+            $this->createRemoteCodeEditorProxy($ssh, $domain, $port, $username);
+
+            $this->remoteCodeEditorHealthCheck($ssh, $domain, $port);
+
+            $developer->update(
+                $this->filterDeveloperColumns([
+                    'code_editor_url' => 'https://' . $domain,
+                    'vscode_url' => 'https://' . $domain,
+                    'code_editor_port' => $port,
+                ])
+            );
+
+            return [
+                'domain' => $domain,
+                'url' => 'https://' . $domain,
+                'port' => $port,
+                'project_root' => $projectRoot,
+                'mode' => 'root_full_proxy',
+            ];
+        }
+
+        $this->installUserCodeServerOnRemote($ssh, $developer, $port, $projectRoot);
 
         $developer->update(
             $this->filterDeveloperColumns([
@@ -648,12 +654,91 @@ class DeveloperCpanelImportController extends Controller
             ])
         );
 
-        return [
-            'domain' => $domain,
-            'url' => 'https://' . $domain,
-            'port' => $port,
-            'project_root' => $projectRoot,
-        ];
+        throw new \Exception(
+            'code-server was installed as cPanel user ' . $sshUser .
+            ', but HTTPS reverse proxy for https://' . $domain .
+            ' still needs root/WHM access on server ' . $serverIp .
+            '. The public Laravel page is already correct: https://developercodes.webscepts.com/codeditor. ' .
+            'To show visual VS Code inside it, add working WHM/root SSH/API credentials or install proxy on that server.'
+        );
+    }
+
+    private function connectServerSsh(Server $server, ?DeveloperUser $developer = null): SSH2
+    {
+        $credentials = $this->serverCredentials($server);
+
+        $host = $this->cleanHost((string) $credentials['host']);
+        $port = (int) ($server->ssh_port ?? 22);
+
+        if (!$host) {
+            throw new \Exception('SSH host is missing.');
+        }
+
+        $rootUsername = trim((string) ($credentials['username'] ?: 'root'));
+        $rootPassword = trim((string) ($credentials['password'] ?? ''));
+
+        if ($rootUsername && $rootPassword) {
+            try {
+                $ssh = new SSH2($host, $port);
+                $ssh->setTimeout(30);
+
+                if ($ssh->login($rootUsername, $rootPassword)) {
+                    return $ssh;
+                }
+            } catch (\Throwable $e) {
+                // Continue to cPanel fallback.
+            }
+        }
+
+        if (!$developer) {
+            throw new \Exception(
+                'Root SSH failed and developer account was not provided for cPanel SSH fallback.'
+            );
+        }
+
+        $cpanelUsername = trim((string) (
+            $developer->cpanel_username
+            ?: $developer->ssh_username
+            ?: ''
+        ));
+
+        if (!$cpanelUsername) {
+            throw new \Exception('Root SSH failed and cPanel username is missing.');
+        }
+
+        $cpanelPassword = null;
+
+        if (!empty($developer->temporary_password)) {
+            try {
+                $cpanelPassword = Crypt::decryptString($developer->temporary_password);
+            } catch (\Throwable $e) {
+                $cpanelPassword = null;
+            }
+        }
+
+        if (!$cpanelPassword) {
+            throw new \Exception(
+                'Root SSH failed. cPanel SSH fallback failed because developer password is missing. Reset developer password or import the real cPanel password.'
+            );
+        }
+
+        $ssh = new SSH2($host, $port);
+        $ssh->setTimeout(30);
+
+        if (!$ssh->login($cpanelUsername, $cpanelPassword)) {
+            throw new \Exception(
+                'SSH login failed for server ' . $host . ':' . $port .
+                ' as root and also failed as cPanel user ' . $cpanelUsername .
+                '. Enable SSH access for this cPanel account or update the developer/cPanel password.'
+            );
+        }
+
+        return $ssh;
+    }
+
+    private function remoteWhoami(SSH2 $ssh): string
+    {
+        return trim((string) $ssh->exec('whoami'));
     }
 
     private function installCodeServerOnRemote(SSH2 $ssh): void
@@ -661,9 +746,7 @@ class DeveloperCpanelImportController extends Controller
         $command = <<<'BASH'
 set -e
 
-echo "========================================"
-echo "Installing code-server if missing"
-echo "========================================"
+echo "Installing code-server if missing..."
 
 if ! command -v code-server >/dev/null 2>&1; then
     curl -fsSL https://code-server.dev/install.sh | sh
@@ -681,6 +764,89 @@ code-server --version || true
 BASH;
 
         $this->runRemoteCommand($ssh, $command, 700);
+    }
+
+    private function installUserCodeServerOnRemote(
+        SSH2 $ssh,
+        DeveloperUser $developer,
+        int $port,
+        string $projectRoot
+    ): void {
+        $username = trim((string) (
+            $developer->cpanel_username
+            ?: $developer->ssh_username
+            ?: 'developer'
+        ));
+
+        $password = null;
+
+        if (!empty($developer->temporary_password)) {
+            try {
+                $password = Crypt::decryptString($developer->temporary_password);
+            } catch (\Throwable $e) {
+                $password = null;
+            }
+        }
+
+        if (!$password) {
+            $password = Str::random(24);
+        }
+
+        $password = preg_replace('/[^a-zA-Z0-9]/', '', $password) ?: Str::random(24);
+
+        $safeProjectRoot = $this->shellArg($projectRoot);
+
+        $command = <<<BASH
+set -e
+
+echo "Installing code-server as cPanel user {$username}"
+echo "Project: {$projectRoot}"
+echo "Port: {$port}"
+
+mkdir -p "\$HOME/.local/bin"
+mkdir -p "\$HOME/.config/code-server"
+mkdir -p {$safeProjectRoot}
+
+if ! command -v code-server >/dev/null 2>&1; then
+    curl -fsSL https://code-server.dev/install.sh | sh
+fi
+
+CODE_SERVER_PATH=\$(command -v code-server || true)
+
+if [ -z "\$CODE_SERVER_PATH" ]; then
+    echo "code-server binary not found after install."
+    exit 1
+fi
+
+cat > "\$HOME/.config/code-server/config.yaml" <<CONFIG
+bind-addr: 127.0.0.1:{$port}
+auth: password
+password: {$password}
+cert: false
+CONFIG
+
+pkill -f "code-server.*{$port}" || true
+
+nohup "\$CODE_SERVER_PATH" --bind-addr 127.0.0.1:{$port} --auth password {$safeProjectRoot} > "\$HOME/code-server-{$port}.log" 2>&1 &
+
+sleep 5
+
+if ! pgrep -f "code-server.*{$port}" >/dev/null 2>&1; then
+    echo "code-server failed to start."
+    cat "\$HOME/code-server-{$port}.log" || true
+    exit 1
+fi
+
+if ! curl -I --max-time 10 "http://127.0.0.1:{$port}" >/tmp/code-server-user-health.txt 2>&1; then
+    cat /tmp/code-server-user-health.txt
+    echo "code-server started but local health check failed."
+    exit 1
+fi
+
+echo "SUCCESS: code-server running as cPanel user {$username} on 127.0.0.1:{$port}"
+BASH;
+
+        $this->runRemoteCommand($ssh, $command, 500);
     }
 
     private function createRemoteCodeServerService(
@@ -713,13 +879,6 @@ BASH;
             $password = Str::random(24);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Keep code-server password safe for systemd.
-        |--------------------------------------------------------------------------
-        | Avoid Str::password() symbols because systemd Environment line can break.
-        |--------------------------------------------------------------------------
-        */
         $password = preg_replace('/[^a-zA-Z0-9]/', '', $password) ?: Str::random(24);
 
         $safeUser = $this->shellArg($username);
@@ -748,14 +907,6 @@ SERVICE;
         $command = <<<BASH
 set -e
 
-echo "========================================"
-echo "Creating code-server service"
-echo "User: {$username}"
-echo "Service: {$serviceName}.service"
-echo "Port: {$port}"
-echo "Project: {$projectRoot}"
-echo "========================================"
-
 CODE_SERVER_PATH=\$(command -v code-server || echo /usr/bin/code-server)
 
 if ! id {$safeUser} >/dev/null 2>&1; then
@@ -777,16 +928,14 @@ systemctl restart {$serviceName}.service
 
 sleep 5
 
-systemctl status {$serviceName}.service --no-pager || true
-
 if ! systemctl is-active --quiet {$serviceName}.service; then
-    echo "FAILED: {$serviceName}.service is not active."
+    systemctl status {$serviceName}.service --no-pager || true
     journalctl -u {$serviceName}.service -n 120 --no-pager || true
     exit 1
 fi
 
 if ! ss -tulpn | grep -q ":{$port}"; then
-    echo "FAILED: code-server service started, but port {$port} is not listening."
+    echo "code-server service started, but port {$port} is not listening."
     journalctl -u {$serviceName}.service -n 120 --no-pager || true
     exit 1
 fi
@@ -806,16 +955,9 @@ DOMAIN="{$domain}"
 PORT="{$port}"
 CPANEL_USER="{$cpanelUsername}"
 
-echo "========================================"
-echo "Creating VS Code reverse proxy"
-echo "Domain: \$DOMAIN"
-echo "Port: \$PORT"
-echo "cPanel User: \$CPANEL_USER"
-echo "========================================"
+echo "Creating VS Code reverse proxy for \$DOMAIN to 127.0.0.1:\$PORT"
 
 if [ -x /scripts/rebuildhttpdconf ] && [ -d /etc/apache2/conf.d/userdata ]; then
-    echo "cPanel server detected."
-
     OWNER=""
 
     if [ -x /scripts/whoowns ]; then
@@ -826,9 +968,6 @@ if [ -x /scripts/rebuildhttpdconf ] && [ -d /etc/apache2/conf.d/userdata ]; then
         OWNER="\$CPANEL_USER"
     fi
 
-    echo "Detected owner: \$OWNER"
-
-    echo "Installing Apache proxy modules if missing..."
     if command -v yum >/dev/null 2>&1; then
         yum install -y ea-apache24-mod_proxy ea-apache24-mod_proxy_http ea-apache24-mod_proxy_wstunnel ea-apache24-mod_rewrite ea-apache24-mod_headers || true
     fi
@@ -836,8 +975,6 @@ if [ -x /scripts/rebuildhttpdconf ] && [ -d /etc/apache2/conf.d/userdata ]; then
     if command -v dnf >/dev/null 2>&1; then
         dnf install -y ea-apache24-mod_proxy ea-apache24-mod_proxy_http ea-apache24-mod_proxy_wstunnel ea-apache24-mod_rewrite ea-apache24-mod_headers || true
     fi
-
-    echo "Creating cPanel userdata includes..."
 
     for SSLTYPE in std ssl; do
         for APACHEVER in 2_4 2.4; do
@@ -868,26 +1005,19 @@ if [ -x /scripts/rebuildhttpdconf ] && [ -d /etc/apache2/conf.d/userdata ]; then
     </IfModule>
 </IfModule>
 APACHECONF
-
-            echo "Created: \$INCLUDE_FILE"
         done
     done
 
-    echo "Ensuring cPanel vhost includes..."
     /scripts/ensure_vhost_includes --user="\$OWNER" || true
     /scripts/ensure_vhost_includes --all-users || true
-
-    echo "Rebuilding Apache config..."
     /scripts/rebuildhttpdconf
 
-    echo "Checking Apache config..."
     if command -v apachectl >/dev/null 2>&1; then
         apachectl configtest
     elif command -v httpd >/dev/null 2>&1; then
         httpd -t
     fi
 
-    echo "Restarting Apache..."
     if systemctl list-unit-files | grep -q '^httpd'; then
         systemctl restart httpd
     elif systemctl list-unit-files | grep -q '^apache2'; then
@@ -896,25 +1026,9 @@ APACHECONF
         service httpd restart || service apache2 restart
     fi
 
-    echo "Apache proxy modules loaded:"
-    if command -v httpd >/dev/null 2>&1; then
-        httpd -M 2>/dev/null | grep -E "proxy|rewrite|headers" || true
-    elif command -v apache2ctl >/dev/null 2>&1; then
-        apache2ctl -M 2>/dev/null | grep -E "proxy|rewrite|headers" || true
-    fi
-
-    echo "Apache vhost check:"
-    if command -v httpd >/dev/null 2>&1; then
-        httpd -S 2>&1 | grep "\$DOMAIN" || true
-    elif command -v apache2ctl >/dev/null 2>&1; then
-        apache2ctl -S 2>&1 | grep "\$DOMAIN" || true
-    fi
-
     echo "cPanel Apache reverse proxy created."
     exit 0
 fi
-
-echo "Non-cPanel server detected. Creating Nginx reverse proxy."
 
 if ! command -v nginx >/dev/null 2>&1; then
     echo "Nginx is not installed on target server."
@@ -974,14 +1088,7 @@ DOMAIN={$safeDomain}
 EMAIL={$safeEmail}
 CPANEL_USER={$safeUser}
 
-echo "========================================"
-echo "Installing or repairing SSL"
-echo "Domain: \$DOMAIN"
-echo "User: \$CPANEL_USER"
-echo "========================================"
-
 if [ -x /usr/local/cpanel/bin/autossl_check ]; then
-    echo "cPanel AutoSSL detected. Running AutoSSL for user \$CPANEL_USER."
     /usr/local/cpanel/bin/autossl_check --user "\$CPANEL_USER" || true
 fi
 
@@ -1037,58 +1144,27 @@ set -e
 DOMAIN="{$domain}"
 PORT="{$port}"
 
-echo "========================================"
-echo "VS Code backend health check"
-echo "Domain: \$DOMAIN"
-echo "Port: \$PORT"
-echo "========================================"
-
-echo "Checking local code-server port..."
-
 if ! curl -I --max-time 10 "http://127.0.0.1:\$PORT" >/tmp/code-server-local-health.txt 2>&1; then
     cat /tmp/code-server-local-health.txt
-    echo "FAILED: code-server is not responding on 127.0.0.1:\$PORT"
+    echo "code-server is not responding on 127.0.0.1:\$PORT"
     exit 1
 fi
-
-cat /tmp/code-server-local-health.txt || true
-
-echo "Checking public backend URL..."
 
 HTML=\$(curl -Lk --max-time 25 "https://\$DOMAIN" || true)
 
 echo "\$HTML" | head -n 30
 
 if echo "\$HTML" | grep -qi "Index of /"; then
-    echo "FAILED: Backend domain is still showing Apache Index of /."
-    echo "This means Apache proxy include was not applied."
-    echo "Check cPanel owner and userdata include path."
+    echo "Backend domain is still showing Apache Index of /. Proxy was not applied."
     exit 1
 fi
 
 if echo "\$HTML" | grep -qi "cgi-bin"; then
-    echo "FAILED: Backend domain is still showing cPanel cgi-bin folder."
-    echo "This means domain is still using normal cPanel document root."
+    echo "Backend domain is still showing cPanel cgi-bin folder. Proxy was not applied."
     exit 1
 fi
 
-if echo "\$HTML" | grep -qi "code-server"; then
-    echo "SUCCESS: code-server detected."
-    exit 0
-fi
-
-if echo "\$HTML" | grep -qi "VS Code"; then
-    echo "SUCCESS: VS Code detected."
-    exit 0
-fi
-
-if echo "\$HTML" | grep -qi "password"; then
-    echo "SUCCESS: code-server login page detected."
-    exit 0
-fi
-
-echo "WARNING: Backend is not Index page, but VS Code marker was not found."
-echo "Health check accepted because Apache Index is gone."
+echo "VS Code backend health check passed."
 BASH;
 
         $this->runRemoteCommand($ssh, $command, 160);
@@ -1210,37 +1286,6 @@ BASH;
         }
     }
 
-    private function connectServerSsh(Server $server): SSH2
-    {
-        $credentials = $this->serverCredentials($server);
-
-        $host = $this->cleanHost((string) $credentials['host']);
-        $port = (int) ($server->ssh_port ?? 22);
-        $username = trim((string) ($credentials['username'] ?: 'root'));
-        $password = trim((string) ($credentials['password'] ?? ''));
-
-        if (!$host) {
-            throw new \Exception('SSH host is missing.');
-        }
-
-        if (!$username) {
-            throw new \Exception('SSH username is missing.');
-        }
-
-        if (!$password) {
-            throw new \Exception('SSH password is missing.');
-        }
-
-        $ssh = new SSH2($host, $port);
-        $ssh->setTimeout(80);
-
-        if (!$ssh->login($username, $password)) {
-            throw new \Exception('SSH login failed for server ' . $host . ':' . $port . ' as ' . $username);
-        }
-
-        return $ssh;
-    }
-
     private function runRemoteCommand(SSH2 $ssh, string $command, int $timeout = 120): string
     {
         $ssh->setTimeout($timeout);
@@ -1264,12 +1309,6 @@ BASH;
 
     private function fetchCpanelAccounts(Server $server): array
     {
-        /*
-        |--------------------------------------------------------------------------
-        | First try WHM through SSH.
-        |--------------------------------------------------------------------------
-        */
-
         try {
             $ssh = $this->connectServerSsh($server);
 
@@ -1280,18 +1319,13 @@ BASH;
             );
 
             $json = json_decode($output, true);
-
             $rawAccounts = data_get($json, 'data.acct', []);
 
             if (is_array($rawAccounts) && count($rawAccounts) > 0) {
                 return $this->mapWhmAccounts($rawAccounts, $server);
             }
         } catch (\Throwable $e) {
-            /*
-            |--------------------------------------------------------------------------
-            | Fall back to WHM HTTP API below.
-            |--------------------------------------------------------------------------
-            */
+            // Fall back to WHM HTTP API.
         }
 
         $credentials = $this->serverCredentials($server);
@@ -1305,11 +1339,11 @@ BASH;
         }
 
         if (!$username) {
-            throw new \Exception('WHM username is missing. Add whm_username, root_username, username, user, or ssh_username on server record.');
+            throw new \Exception('WHM username is missing.');
         }
 
         if (!$password) {
-            throw new \Exception('WHM/root/reseller password is missing. Add whm_password, root_password, ssh_password, or password on server record.');
+            throw new \Exception('WHM/root/reseller password is missing.');
         }
 
         $host = $this->cleanHost($host);
