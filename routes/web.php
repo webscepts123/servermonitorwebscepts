@@ -17,6 +17,7 @@ use App\Http\Controllers\SentinelWebScanController;
 use App\Http\Controllers\DeveloperWorkspaceController;
 use App\Http\Controllers\DeveloperAuthController;
 use App\Http\Controllers\DeveloperCpanelImportController;
+use App\Http\Controllers\DeveloperFileEditorController;
 
 /*
 |--------------------------------------------------------------------------
@@ -81,21 +82,36 @@ Route::domain('developercodes.webscepts.com')
 
             /*
             |--------------------------------------------------------------------------
-            | Web VS Code / Code Editor Routes
+            | Visual Code Editor Routes
             |--------------------------------------------------------------------------
+            | This is now Monaco Editor + WHM/cPanel File Manager API.
+            | No SSH, no root, no code-server backend needed.
+            |
             | Main route:
             | https://developercodes.webscepts.com/codeditor
             |--------------------------------------------------------------------------
             */
 
-            Route::get('/codeditor', [DeveloperWorkspaceController::class, 'codeEditor'])
+            Route::get('/codeditor', [DeveloperFileEditorController::class, 'index'])
                 ->name('developer.domain.codeditor');
 
-            Route::get('/codeeditor', [DeveloperWorkspaceController::class, 'codeEditor'])
+            Route::get('/codeeditor', [DeveloperFileEditorController::class, 'index'])
                 ->name('developer.domain.codeeditor');
 
-            Route::get('/coddeditor', [DeveloperWorkspaceController::class, 'codeEditor'])
+            Route::get('/coddeditor', [DeveloperFileEditorController::class, 'index'])
                 ->name('developer.domain.coddeditor');
+
+            Route::get('/codeditor/tree', [DeveloperFileEditorController::class, 'tree'])
+                ->name('developer.domain.codeditor.tree');
+
+            Route::get('/codeditor/read', [DeveloperFileEditorController::class, 'read'])
+                ->name('developer.domain.codeditor.read');
+
+            Route::post('/codeditor/save', [DeveloperFileEditorController::class, 'save'])
+                ->name('developer.domain.codeditor.save');
+
+            Route::post('/codeditor/file/create', [DeveloperFileEditorController::class, 'createFile'])
+                ->name('developer.domain.codeditor.file.create');
 
             /*
             |--------------------------------------------------------------------------
@@ -672,13 +688,10 @@ Route::middleware(['auth'])->group(function () {
 
             /*
             |--------------------------------------------------------------------------
-            | VS Code / Code Server Auto Provisioning
+            | Old Code Server Setup Routes
             |--------------------------------------------------------------------------
-            | Existing single account:
-            | POST /developers/{developer}/code-editor/setup
-            |
-            | All existing accounts:
-            | POST /developers/code-editor/setup-existing
+            | Kept so existing buttons/forms do not break.
+            | The new visual editor does not need SSH/root/code-server.
             |--------------------------------------------------------------------------
             */
 
