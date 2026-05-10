@@ -350,7 +350,7 @@ Password: {{ $login['password'] ?? '-' }}
                 </div>
 
                 <p class="text-slate-300 mt-3 max-w-5xl">
-                    Fetch cPanel accounts, choose frameworks, set each account’s backend Code Editor URL,
+                    Fetch cPanel accounts, choose frameworks, set backend Code Editor URL,
                     assign permissions, and control Developer Portal access.
                 </p>
 
@@ -680,7 +680,6 @@ Password: {{ $login['password'] ?? '-' }}
 
                                 <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
 
-                                    {{-- Main Config --}}
                                     <div class="xl:col-span-4 space-y-4">
                                         <div>
                                             <div class="dev-section-title">Framework</div>
@@ -719,7 +718,6 @@ Password: {{ $login['password'] ?? '-' }}
                                         </div>
                                     </div>
 
-                                    {{-- Commands --}}
                                     <div class="xl:col-span-3 space-y-4">
                                         <div>
                                             <div class="dev-section-title">Commands</div>
@@ -746,7 +744,6 @@ Password: {{ $login['password'] ?? '-' }}
                                         </div>
                                     </div>
 
-                                    {{-- Permissions --}}
                                     <div class="xl:col-span-3">
                                         <div class="dev-section-title">Permissions</div>
 
@@ -775,7 +772,6 @@ Password: {{ $login['password'] ?? '-' }}
                                         </div>
                                     </div>
 
-                                    {{-- Database --}}
                                     <div class="xl:col-span-2 space-y-3">
                                         <div class="dev-section-title">Database</div>
 
@@ -859,7 +855,7 @@ Password: {{ $login['password'] ?? '-' }}
             <div>
                 <h2 class="text-2xl font-black text-slate-900">Developer Portal Users</h2>
                 <p class="text-slate-500 mt-1">
-                    Existing Developer Codes users created from cPanel accounts.
+                    Existing Developer Codes users. You can update VS Code URL, project root, permissions, commands and database access here.
                 </p>
             </div>
 
@@ -870,7 +866,7 @@ Password: {{ $login['password'] ?? '-' }}
                    class="w-full xl:w-96 px-4 py-3 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
-        <div class="p-5 grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <div class="p-5 grid grid-cols-1 gap-5">
             @forelse($developers as $developer)
                 @php
                     $developerPortalEnabled = $portalIsActive($developer);
@@ -891,185 +887,253 @@ Password: {{ $login['password'] ?? '-' }}
                         ($fallbackDeveloperEditorUrl ?? '')
                     );
 
-                    $toggleRoute = Route::has('developers.toggle') ? route('developers.toggle', $developer->id) : '#';
+                    $updateRoute = Route::has('developers.settings.update') ? route('developers.settings.update', $developer->id) : '#';
                     $resetRoute = Route::has('developers.reset-password') ? route('developers.reset-password', $developer->id) : '#';
                     $deleteRoute = Route::has('developers.destroy') ? route('developers.destroy', $developer->id) : '#';
                 @endphp
 
-                <div class="developer-row rounded-3xl border border-slate-200 bg-white shadow-sm p-5"
+                <div class="developer-row rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden"
                      data-search="{{ $developerSearchText }}">
 
-                    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                        <div class="flex items-start gap-3">
-                            <div class="w-12 h-12 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
-                                <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
-                            </div>
+                    <form method="POST" action="{{ $updateRoute }}">
+                        @csrf
+                        @method('PUT')
 
-                            <div>
-                                <div class="font-black text-slate-900 text-lg">{{ $developer->name ?? '-' }}</div>
-                                <div class="text-xs text-slate-500 mt-1 font-bold">{{ $developer->email ?? '-' }}</div>
-                                <div class="text-xs text-slate-500 mt-1 font-bold">
-                                    cPanel: {{ $developer->cpanel_username ?? '-' }}
+                        <div class="p-5 bg-slate-50 border-b flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-12 h-12 rounded-2xl {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }} flex items-center justify-center shrink-0">
+                                    <i class="fa-solid {{ $developerPortalEnabled ? 'fa-user-check' : 'fa-user-lock' }}"></i>
                                 </div>
-                                <div class="text-xs text-slate-500 mt-1 font-bold">
-                                    Domain: {{ $developer->cpanel_domain ?? '-' }}
-                                </div>
-                            </div>
-                        </div>
 
-                        <span class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
-                            <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
-                            {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
-                        </span>
-                    </div>
-
-                    <div class="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                            <div class="dev-section-title">Project Root</div>
-                            <div class="text-xs font-bold text-slate-700 break-all">
-                                {{ $developer->project_root ?? $developer->allowed_project_path ?? '-' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl bg-blue-50 border border-blue-200 p-4">
-                            <div class="dev-section-title">Code Editor</div>
-
-                            <a href="{{ $publicCodeEditorUrl }}"
-                               target="_blank"
-                               class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
-                                <i class="fa-solid fa-code"></i>
-                                Open Public Editor
-                            </a>
-
-                            <div class="text-xs text-blue-700 mt-3 font-bold break-all">
-                                Backend: {{ $fallbackDeveloperEditorUrl ?: 'Not configured' }}
-                            </div>
-                        </div>
-                    </div>
-
-                    {{-- Full Permission View --}}
-                    <div class="mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4">
-                        <div class="dev-section-title">Permissions</div>
-
-                        <div class="space-y-4">
-                            @foreach($permissionGroups as $groupTitle => $permissions)
                                 <div>
-                                    <div class="text-xs font-black text-slate-500 mb-2">
-                                        {{ $groupTitle }}
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <div class="font-black text-slate-900 text-lg">
+                                            {{ $developer->name ?? '-' }}
+                                        </div>
+
+                                        <span class="inline-flex items-center gap-2 px-3 py-1 rounded-xl border text-xs font-black {{ $frameworkBadge($developer->framework ?? 'custom') }}">
+                                            <i class="{{ $frameworkIcon($developer->framework ?? 'custom') }}"></i>
+                                            {{ $frameworks[$developer->framework ?? 'custom'] ?? ($developer->framework ?? 'Custom') }}
+                                        </span>
                                     </div>
 
-                                    <div class="flex flex-wrap gap-2">
-                                        @foreach($permissions as $column => $meta)
-                                            @php
-                                                $allowed = !empty($developer->{$column});
-                                                $label = $meta[0];
-                                                $icon = $meta[1];
-                                            @endphp
+                                    <div class="text-xs text-slate-500 mt-1 font-bold">{{ $developer->email ?? '-' }}</div>
 
-                                            <span class="permission-pill {{ $allowed ? 'permission-on' : 'permission-off' }}">
-                                                <i class="{{ $icon }}"></i>
-                                                {{ $label }}
-                                                <span class="ml-1">
-                                                    {{ $allowed ? 'ON' : 'OFF' }}
-                                                </span>
-                                            </span>
+                                    <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 font-bold">
+                                        <span>cPanel: <b class="text-slate-800">{{ $developer->cpanel_username ?? '-' }}</b></span>
+                                        <span>Domain: <b class="text-slate-800">{{ $developer->cpanel_domain ?? '-' }}</b></span>
+                                        <span>Last Login: <b class="text-slate-800">{{ !empty($developer->last_login_at) ? \Carbon\Carbon::parse($developer->last_login_at)->diffForHumans() : 'Never' }}</b></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-3">
+                                <input type="hidden" name="developer_portal_access" value="0">
+
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox"
+                                           class="portal-switch-input"
+                                           name="developer_portal_access"
+                                           value="1"
+                                           {{ $developerPortalEnabled ? 'checked' : '' }}
+                                           onchange="updateExistingPortalLabel(this)">
+                                    <span class="portal-switch"></span>
+                                </label>
+
+                                <span class="existing-portal-label px-3 py-1 rounded-full text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
+                                    Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="p-5">
+                            <div class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+
+                                {{-- Main Settings --}}
+                                <div class="xl:col-span-4 space-y-4">
+                                    <div>
+                                        <div class="dev-section-title">Framework</div>
+                                        <select name="framework" class="dev-card-input">
+                                            @foreach($frameworks as $key => $label)
+                                                <option value="{{ $key }}" {{ ($developer->framework ?? 'custom') === $key ? 'selected' : '' }}>
+                                                    {{ $label }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <div class="dev-section-title">Project Root</div>
+                                        <input type="text"
+                                               name="project_root"
+                                               value="{{ $developer->project_root ?? $developer->allowed_project_path ?? '' }}"
+                                               placeholder="/home/{{ $developer->cpanel_username ?? 'user' }}/public_html"
+                                               class="dev-card-input">
+                                    </div>
+
+                                    <div>
+                                        <div class="dev-section-title">Code Editor Backend URL</div>
+                                        <input type="text"
+                                               name="code_editor_url"
+                                               value="{{ $fallbackDeveloperEditorUrl }}"
+                                               placeholder="https://dev.teengirls.lk or https://code-user.webscepts.com"
+                                               class="dev-card-input">
+
+                                        <div class="text-xs text-blue-700 mt-2 font-bold break-all">
+                                            Public URL: {{ $publicCodeEditorUrl }}
+                                        </div>
+                                    </div>
+
+                                    <div class="rounded-2xl bg-blue-50 border border-blue-200 p-4">
+                                        <a href="{{ $publicCodeEditorUrl }}"
+                                           target="_blank"
+                                           class="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
+                                            <i class="fa-solid fa-code"></i>
+                                            Open Public Editor
+                                        </a>
+
+                                        <div class="text-xs text-blue-700 mt-3 font-bold break-all">
+                                            Backend: {{ $fallbackDeveloperEditorUrl ?: 'Not configured' }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Commands --}}
+                                <div class="xl:col-span-3 space-y-4">
+                                    <div>
+                                        <div class="dev-section-title">Commands</div>
+
+                                        <div class="space-y-3">
+                                            <input type="text"
+                                                   name="build_command"
+                                                   value="{{ $developer->build_command ?? '' }}"
+                                                   placeholder="Build command"
+                                                   class="dev-card-input">
+
+                                            <input type="text"
+                                                   name="deploy_command"
+                                                   value="{{ $developer->deploy_command ?? '' }}"
+                                                   placeholder="Deploy command"
+                                                   class="dev-card-input">
+
+                                            <input type="text"
+                                                   name="start_command"
+                                                   value="{{ $developer->start_command ?? '' }}"
+                                                   placeholder="Start command"
+                                                   class="dev-card-input">
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div class="dev-section-title">Database Details</div>
+
+                                        <div class="space-y-3">
+                                            <select name="db_type" class="dev-card-input">
+                                                <option value="mysql" {{ ($developer->db_type ?? 'mysql') === 'mysql' ? 'selected' : '' }}>MySQL</option>
+                                                <option value="postgresql" {{ ($developer->db_type ?? '') === 'postgresql' ? 'selected' : '' }}>PostgreSQL</option>
+                                            </select>
+
+                                            <input type="text"
+                                                   name="db_host"
+                                                   value="{{ $developer->db_host ?? '' }}"
+                                                   placeholder="DB Host"
+                                                   class="dev-card-input">
+
+                                            <input type="text"
+                                                   name="db_username"
+                                                   value="{{ $developer->db_username ?? '' }}"
+                                                   placeholder="DB Username"
+                                                   class="dev-card-input">
+
+                                            <input type="text"
+                                                   name="db_name"
+                                                   value="{{ $developer->db_name ?? '' }}"
+                                                   placeholder="DB Name"
+                                                   class="dev-card-input">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {{-- Editable Permissions --}}
+                                <div class="xl:col-span-5">
+                                    <div class="dev-section-title">Update Permissions</div>
+
+                                    <div class="space-y-4">
+                                        @foreach($permissionGroups as $groupTitle => $permissions)
+                                            <div class="rounded-2xl bg-slate-50 border border-slate-200 p-4">
+                                                <div class="text-xs font-black text-slate-500 mb-3">
+                                                    {{ $groupTitle }}
+                                                </div>
+
+                                                <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                    @foreach($permissions as $column => $meta)
+                                                        @php
+                                                            $allowed = !empty($developer->{$column});
+                                                            $label = $meta[0];
+                                                            $icon = $meta[1];
+                                                        @endphp
+
+                                                        <label class="dev-check {{ $allowed ? 'border-green-200 bg-green-50 text-green-700' : '' }}">
+                                                            <input type="checkbox"
+                                                                   name="{{ $column }}"
+                                                                   value="1"
+                                                                   class="rounded border-slate-300 text-blue-600"
+                                                                   {{ $allowed ? 'checked' : '' }}>
+                                                            <i class="{{ $icon }}"></i>
+                                                            <span>{{ $label }}</span>
+                                                        </label>
+                                                    @endforeach
+                                                </div>
+                                            </div>
                                         @endforeach
                                     </div>
                                 </div>
-                            @endforeach
-                        </div>
-                    </div>
-
-                    {{-- Database Details --}}
-                    <div class="mt-5 grid grid-cols-1 lg:grid-cols-4 gap-3">
-                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                            <div class="text-xs font-black text-slate-500">DB Type</div>
-                            <div class="text-sm font-black text-slate-800 mt-1">
-                                {{ $developer->db_type ?? '-' }}
                             </div>
-                        </div>
 
-                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                            <div class="text-xs font-black text-slate-500">DB Host</div>
-                            <div class="text-sm font-black text-slate-800 mt-1 break-all">
-                                {{ $developer->db_host ?? '-' }}
-                            </div>
-                        </div>
+                            <div class="mt-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 border-t pt-5">
+                                <div class="text-sm text-slate-500 font-bold">
+                                    Save changes to update this developer’s editor URL and permissions.
+                                </div>
 
-                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                            <div class="text-xs font-black text-slate-500">DB User</div>
-                            <div class="text-sm font-black text-slate-800 mt-1 break-all">
-                                {{ $developer->db_username ?? '-' }}
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                            <div class="text-xs font-black text-slate-500">DB Name</div>
-                            <div class="text-sm font-black text-slate-800 mt-1 break-all">
-                                {{ $developer->db_name ?? '-' }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                        <div>
-                            @if(Route::has('developers.toggle'))
-                                <form method="POST"
-                                      action="{{ $toggleRoute }}"
-                                      class="developer-toggle-form"
-                                      data-enabled="{{ $developerPortalEnabled ? '1' : '0' }}">
-                                    @csrf
-
+                                <div class="flex justify-end gap-2">
                                     <button type="submit"
-                                            class="group flex items-center gap-3 px-4 py-3 rounded-2xl border transition {{ $developerPortalEnabled ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100' }}"
-                                            title="{{ $developerPortalEnabled ? 'Turn Off Portal Access' : 'Turn On Portal Access' }}">
-                                        <span class="relative inline-flex h-8 w-14 rounded-full transition {{ $developerPortalEnabled ? 'bg-green-600' : 'bg-slate-300' }}">
-                                            <span class="absolute top-1 h-6 w-6 rounded-full bg-white shadow transition {{ $developerPortalEnabled ? 'left-7' : 'left-1' }}"></span>
-                                        </span>
-
-                                        <span class="font-black text-xs">
-                                            Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
-                                        </span>
+                                            class="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-black text-sm">
+                                        <i class="fa-solid fa-floppy-disk mr-1"></i>
+                                        Save Changes
                                     </button>
-                                </form>
-                            @else
-                                <span class="px-4 py-2 rounded-2xl text-xs font-black {{ $developerPortalEnabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' }}">
-                                    Portal {{ $developerPortalEnabled ? 'ON' : 'OFF' }}
-                                </span>
-                            @endif
+                    </form>
+
+                                    @if(Route::has('developers.reset-password'))
+                                        <form method="POST" action="{{ $resetRoute }}">
+                                            @csrf
+                                            <button type="submit"
+                                                    class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm">
+                                                <i class="fa-solid fa-key mr-1"></i>
+                                                Reset
+                                            </button>
+                                        </form>
+                                    @endif
+
+                                    @if(Route::has('developers.destroy'))
+                                        <form method="POST"
+                                              action="{{ $deleteRoute }}"
+                                              onsubmit="return confirm('Delete this developer login?')">
+                                            @csrf
+                                            @method('DELETE')
+
+                                            <button type="submit"
+                                                    class="px-5 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-sm">
+                                                <i class="fa-solid fa-trash mr-1"></i>
+                                                Delete
+                                            </button>
+                                        </form>
+                                    @endif
+                                </div>
+                            </div>
                         </div>
-
-                        <div class="flex justify-end gap-2">
-                            @if(Route::has('developers.reset-password'))
-                                <form method="POST" action="{{ $resetRoute }}">
-                                    @csrf
-                                    <button type="submit"
-                                            class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs">
-                                        <i class="fa-solid fa-key mr-1"></i>
-                                        Reset
-                                    </button>
-                                </form>
-                            @endif
-
-                            @if(Route::has('developers.destroy'))
-                                <form method="POST"
-                                      action="{{ $deleteRoute }}"
-                                      onsubmit="return confirm('Delete this developer login?')">
-                                    @csrf
-                                    @method('DELETE')
-
-                                    <button type="submit"
-                                            class="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs">
-                                        <i class="fa-solid fa-trash mr-1"></i>
-                                        Delete
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
                 </div>
             @empty
-                <div class="xl:col-span-2 p-10 text-center">
+                <div class="p-10 text-center">
                     <div class="w-20 h-20 mx-auto rounded-3xl bg-slate-100 text-slate-600 flex items-center justify-center">
                         <i class="fa-solid fa-user-shield text-3xl"></i>
                     </div>
@@ -1121,6 +1185,23 @@ Password: {{ $login['password'] ?? '-' }}
         } else {
             label.textContent = 'OFF';
             label.className = 'portal-inline-label px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-700';
+        }
+    }
+
+    function updateExistingPortalLabel(input) {
+        const card = input.closest('.developer-row');
+        const label = card?.querySelector('.existing-portal-label');
+
+        if (!label) {
+            return;
+        }
+
+        if (input.checked) {
+            label.textContent = 'Portal ON';
+            label.className = 'existing-portal-label px-3 py-1 rounded-full text-xs font-black bg-green-100 text-green-700';
+        } else {
+            label.textContent = 'Portal OFF';
+            label.className = 'existing-portal-label px-3 py-1 rounded-full text-xs font-black bg-red-100 text-red-700';
         }
     }
 

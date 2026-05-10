@@ -1184,6 +1184,79 @@ BASH;
         return in_array($dbType, ['postgresql', 'pgsql', 'postgres'], true) ? '5432' : '3306';
     }
 
+    public function updateSettings(Request $request, DeveloperUser $developer)
+    {
+        $data = $request->validate([
+            'framework' => ['nullable', 'string', 'max:100'],
+            'project_root' => ['nullable', 'string', 'max:255'],
+            'code_editor_url' => ['nullable', 'string', 'max:255'],
+
+            'build_command' => ['nullable', 'string', 'max:500'],
+            'deploy_command' => ['nullable', 'string', 'max:500'],
+            'start_command' => ['nullable', 'string', 'max:500'],
+
+            'developer_portal_access' => ['nullable'],
+
+            'db_type' => ['nullable', 'string', 'max:50'],
+            'db_host' => ['nullable', 'string', 'max:255'],
+            'db_username' => ['nullable', 'string', 'max:255'],
+            'db_name' => ['nullable', 'string', 'max:255'],
+
+            'can_view_files' => ['nullable'],
+            'can_edit_files' => ['nullable'],
+            'can_delete_files' => ['nullable'],
+            'can_git_pull' => ['nullable'],
+            'can_clear_cache' => ['nullable'],
+            'can_composer' => ['nullable'],
+            'can_npm' => ['nullable'],
+            'can_run_build' => ['nullable'],
+            'can_run_python' => ['nullable'],
+            'can_restart_app' => ['nullable'],
+            'can_mysql' => ['nullable'],
+            'can_postgresql' => ['nullable'],
+        ]);
+
+        $enabled = $request->boolean('developer_portal_access');
+
+        $payload = [
+            'framework' => $data['framework'] ?? $developer->framework,
+            'project_root' => $data['project_root'] ?? $developer->project_root,
+            'allowed_project_path' => $data['project_root'] ?? $developer->allowed_project_path,
+            'code_editor_url' => $data['code_editor_url'] ?? $developer->code_editor_url,
+
+            'build_command' => $data['build_command'] ?? null,
+            'deploy_command' => $data['deploy_command'] ?? null,
+            'start_command' => $data['start_command'] ?? null,
+
+            'is_active' => $enabled,
+            'developer_portal_access' => $enabled,
+            'portal_access_enabled' => $enabled,
+            'developer_portal_enabled' => $enabled,
+
+            'db_type' => $data['db_type'] ?? null,
+            'db_host' => $data['db_host'] ?? null,
+            'db_username' => $data['db_username'] ?? null,
+            'db_name' => $data['db_name'] ?? null,
+
+            'can_view_files' => $request->boolean('can_view_files'),
+            'can_edit_files' => $request->boolean('can_edit_files'),
+            'can_delete_files' => $request->boolean('can_delete_files'),
+            'can_git_pull' => $request->boolean('can_git_pull'),
+            'can_clear_cache' => $request->boolean('can_clear_cache'),
+            'can_composer' => $request->boolean('can_composer'),
+            'can_npm' => $request->boolean('can_npm'),
+            'can_run_build' => $request->boolean('can_run_build'),
+            'can_run_python' => $request->boolean('can_run_python'),
+            'can_restart_app' => $request->boolean('can_restart_app'),
+            'can_mysql' => $request->boolean('can_mysql'),
+            'can_postgresql' => $request->boolean('can_postgresql'),
+        ];
+
+        $developer->update($this->filterDeveloperColumns($payload));
+
+        return back()->with('success', 'Developer settings updated successfully.');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Prevent SQL error if some columns are missing from developer_users table

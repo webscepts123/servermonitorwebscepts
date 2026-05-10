@@ -672,6 +672,9 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/{developer}/portal-disable', [DeveloperCpanelImportController::class, 'disablePortal'])
                 ->name('portal-disable');
 
+            Route::put('/{developer}/settings', [DeveloperCpanelImportController::class, 'updateSettings'])
+            ->name('settings.update');
+
             Route::delete('/{developer}', [DeveloperCpanelImportController::class, 'destroy'])
                 ->name('destroy');
         });
