@@ -20,7 +20,7 @@ Artisan::command('inspire', function () {
 |--------------------------------------------------------------------------
 | Linux cron must run every minute:
 |
-| * * * * * cd /home/ec2-user/laravel-app && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
+| * * * * * cd /home/devteengirls/public_html && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
 |
 |--------------------------------------------------------------------------
 */
@@ -29,7 +29,9 @@ Artisan::command('inspire', function () {
 |--------------------------------------------------------------------------
 | Fast Server Monitoring
 |--------------------------------------------------------------------------
-| Runs every 15 minutes.
+| Runs every 30 minutes, 24/7.
+| Same purpose as pressing the Check button.
+|
 | Checks:
 | - Server online/offline
 | - SSH
@@ -43,8 +45,8 @@ Artisan::command('inspire', function () {
 |--------------------------------------------------------------------------
 */
 Schedule::command('servers:check')
-    ->everyFifteenMinutes()
-    ->withoutOverlapping(20)
+    ->everyThirtyMinutes()
+    ->withoutOverlapping(30)
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/server-quick-check.log'));
 
@@ -110,6 +112,7 @@ Schedule::call(function () {
         storage_path('logs/server-daily-check.log'),
         storage_path('logs/queue-restart.log'),
         storage_path('logs/cache-clear.log'),
+        storage_path('logs/auto-backup-failover.log'),
     ];
 
     foreach ($files as $file) {
@@ -122,8 +125,7 @@ Schedule::call(function () {
     ->name('cleanup-old-monitoring-logs')
     ->withoutOverlapping();
 
-
-    /*
+/*
 |--------------------------------------------------------------------------
 | Auto Backup + DNS Failover
 |--------------------------------------------------------------------------
@@ -134,7 +136,7 @@ Schedule::call(function () {
 |--------------------------------------------------------------------------
 */
 Schedule::command('servers:auto-backup-failover')
-->everyTenMinutes()
-->withoutOverlapping(30)
-->runInBackground()
-->appendOutputTo(storage_path('logs/auto-backup-failover.log'));
+    ->everyTenMinutes()
+    ->withoutOverlapping(30)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/auto-backup-failover.log'));
