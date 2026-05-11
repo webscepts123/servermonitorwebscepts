@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use phpseclib3\Net\SSH2;
 
@@ -28,6 +29,14 @@ class CpanelAccountController extends Controller
         try {
             $response = $this->whmRequest($server, 'listaccts');
             $accounts = $response['data']['acct'] ?? [];
+
+            foreach ($accounts as $key => $account) {
+                $username = $account['user'] ?? $account['username'] ?? null;
+
+                if ($username) {
+                    $accounts[$key]['alert_contacts'] = $this->getSavedAlertContacts($server, $username);
+                }
+            }
         } catch (\Throwable $e) {
             $error = $e->getMessage();
         }
@@ -108,6 +117,22 @@ class CpanelAccountController extends Controller
 
             /*
             |--------------------------------------------------------------------------
+            | Monitoring Alert Contacts
+            |--------------------------------------------------------------------------
+            */
+            'admin_phone' => 'nullable|string|max:30',
+            'admin_email' => 'nullable|email|max:255',
+            'customer_phone' => 'nullable|string|max:30',
+            'customer_email' => 'nullable|email|max:255',
+            'alert_phones' => 'nullable|string|max:1000',
+            'alert_emails' => 'nullable|string|max:1000',
+            'monitor_website' => 'nullable',
+            'monitor_cpanel' => 'nullable',
+            'monitor_frameworks' => 'nullable',
+            'send_recovery_alert' => 'nullable',
+
+            /*
+            |--------------------------------------------------------------------------
             | Developer Codes / Visual Editor
             |--------------------------------------------------------------------------
             */
@@ -159,6 +184,26 @@ class CpanelAccountController extends Controller
 
             /*
             |--------------------------------------------------------------------------
+            | Save monitoring alert contacts
+            |--------------------------------------------------------------------------
+            */
+            $this->saveAlertContacts($server, $data['username'], [
+                'domain' => $data['domain'],
+                'email' => $data['email'] ?? null,
+                'admin_phone' => $data['admin_phone'] ?? null,
+                'admin_email' => $data['admin_email'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'customer_email' => $data['customer_email'] ?? null,
+                'alert_phones' => $data['alert_phones'] ?? null,
+                'alert_emails' => $data['alert_emails'] ?? null,
+                'monitor_website' => $request->boolean('monitor_website', true),
+                'monitor_cpanel' => $request->boolean('monitor_cpanel', true),
+                'monitor_frameworks' => $request->boolean('monitor_frameworks', true),
+                'send_recovery_alert' => $request->boolean('send_recovery_alert', true),
+            ]);
+
+            /*
+            |--------------------------------------------------------------------------
             | Save real cPanel password for Visual Code Editor File Manager API
             |--------------------------------------------------------------------------
             | This is the important part for /codeditor.
@@ -174,7 +219,7 @@ class CpanelAccountController extends Controller
 
                 return redirect()
                     ->route('servers.cpanel.index', $server)
-                    ->with('success', 'cPanel account created and Developer Codes login saved successfully.')
+                    ->with('success', 'cPanel account created, alert contacts saved, and Developer Codes login saved successfully.')
                     ->with('created_logins', [
                         [
                             'name' => $developer->name ?? $data['username'],
@@ -194,7 +239,7 @@ class CpanelAccountController extends Controller
 
             return redirect()
                 ->route('servers.cpanel.index', $server)
-                ->with('success', 'cPanel account created successfully.');
+                ->with('success', 'cPanel account created and alert contacts saved successfully.');
 
         } catch (\Throwable $e) {
             return back()
@@ -219,6 +264,21 @@ class CpanelAccountController extends Controller
             $account = $this->getAccount($server, $user);
             $packages = $this->getPackages($server);
             $ips = $this->getIps($server);
+
+            $savedAlerts = $this->getSavedAlertContacts($server, $user);
+
+            $account = array_merge($account, [
+                'admin_phone' => $savedAlerts['admin_phone'] ?? null,
+                'admin_email' => $savedAlerts['admin_email'] ?? null,
+                'customer_phone' => $savedAlerts['customer_phone'] ?? null,
+                'customer_email' => $savedAlerts['customer_email'] ?? null,
+                'alert_phones' => $savedAlerts['alert_phones'] ?? null,
+                'alert_emails' => $savedAlerts['alert_emails'] ?? null,
+                'monitor_website' => $savedAlerts['monitor_website'] ?? 1,
+                'monitor_cpanel' => $savedAlerts['monitor_cpanel'] ?? 1,
+                'monitor_frameworks' => $savedAlerts['monitor_frameworks'] ?? 1,
+                'send_recovery_alert' => $savedAlerts['send_recovery_alert'] ?? 1,
+            ]);
         } catch (\Throwable $e) {
             $error = $e->getMessage();
         }
@@ -229,6 +289,62 @@ class CpanelAccountController extends Controller
             compact('server', 'user', 'account', 'packages', 'ips', 'error'),
             $remoteData
         ));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE ALERT CONTACTS
+    |--------------------------------------------------------------------------
+    */
+    public function updateAlertContacts(Request $request, Server $server, string $user)
+    {
+        $data = $request->validate([
+            'admin_phone' => 'nullable|string|max:30',
+            'admin_email' => 'nullable|email|max:255',
+            'customer_phone' => 'nullable|string|max:30',
+            'customer_email' => 'nullable|email|max:255',
+            'alert_phones' => 'nullable|string|max:1000',
+            'alert_emails' => 'nullable|string|max:1000',
+            'monitor_website' => 'nullable',
+            'monitor_cpanel' => 'nullable',
+            'monitor_frameworks' => 'nullable',
+            'send_recovery_alert' => 'nullable',
+        ]);
+
+        try {
+            $account = [];
+
+            try {
+                $account = $this->getAccount($server, $user);
+            } catch (\Throwable $e) {
+                $account = [];
+            }
+
+            $domain = $account['domain'] ?? $account['main_domain'] ?? null;
+            $email = $account['email'] ?? $account['contactemail'] ?? $account['contact_email'] ?? null;
+
+            $this->saveAlertContacts($server, $user, [
+                'domain' => $domain,
+                'email' => $email,
+                'admin_phone' => $data['admin_phone'] ?? null,
+                'admin_email' => $data['admin_email'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'customer_email' => $data['customer_email'] ?? null,
+                'alert_phones' => $data['alert_phones'] ?? null,
+                'alert_emails' => $data['alert_emails'] ?? null,
+                'monitor_website' => $request->boolean('monitor_website'),
+                'monitor_cpanel' => $request->boolean('monitor_cpanel'),
+                'monitor_frameworks' => $request->boolean('monitor_frameworks'),
+                'send_recovery_alert' => $request->boolean('send_recovery_alert'),
+            ]);
+
+            return back()->with('success', 'Alert contacts updated successfully.');
+
+        } catch (\Throwable $e) {
+            return back()
+                ->with('error', 'Alert contacts update failed: ' . $e->getMessage())
+                ->withInput();
+        }
     }
 
     /*
@@ -554,6 +670,22 @@ class CpanelAccountController extends Controller
             'db_username' => $data['db_username'] ?? $username,
             'db_password' => !empty($data['db_password']) ? Crypt::encryptString($data['db_password']) : null,
             'db_name' => $data['db_name'] ?? '',
+
+            /*
+            |--------------------------------------------------------------------------
+            | Alert contact fields if DeveloperUser table has these columns
+            |--------------------------------------------------------------------------
+            */
+            'admin_phone' => $data['admin_phone'] ?? null,
+            'admin_email' => $data['admin_email'] ?? null,
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'customer_email' => $data['customer_email'] ?? null,
+            'alert_phones' => $data['alert_phones'] ?? null,
+            'alert_emails' => $data['alert_emails'] ?? null,
+            'monitor_website' => $request->boolean('monitor_website', true),
+            'monitor_cpanel' => $request->boolean('monitor_cpanel', true),
+            'monitor_frameworks' => $request->boolean('monitor_frameworks', true),
+            'send_recovery_alert' => $request->boolean('send_recovery_alert', true),
         ];
 
         $payload = array_merge($payload, $this->portalAccessPayload($portalAccess));
@@ -564,6 +696,158 @@ class CpanelAccountController extends Controller
             ],
             $this->filterDeveloperColumns($payload)
         );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ALERT CONTACT STORAGE
+    |--------------------------------------------------------------------------
+    */
+    private function saveAlertContacts(Server $server, string $user, array $contacts): void
+    {
+        $user = trim($user);
+
+        if (!$user) {
+            return;
+        }
+
+        $contacts = [
+            'server_id' => $server->id,
+            'server_name' => $server->name ?? null,
+            'server_host' => $server->host ?? $server->hostname ?? $server->ip_address ?? null,
+            'cpanel_username' => $user,
+            'domain' => $contacts['domain'] ?? null,
+            'email' => $contacts['email'] ?? null,
+            'admin_phone' => $contacts['admin_phone'] ?? null,
+            'admin_email' => $contacts['admin_email'] ?? null,
+            'customer_phone' => $contacts['customer_phone'] ?? null,
+            'customer_email' => $contacts['customer_email'] ?? null,
+            'alert_phones' => $contacts['alert_phones'] ?? null,
+            'alert_emails' => $contacts['alert_emails'] ?? null,
+            'monitor_website' => (bool) ($contacts['monitor_website'] ?? true),
+            'monitor_cpanel' => (bool) ($contacts['monitor_cpanel'] ?? true),
+            'monitor_frameworks' => (bool) ($contacts['monitor_frameworks'] ?? true),
+            'send_recovery_alert' => (bool) ($contacts['send_recovery_alert'] ?? true),
+            'updated_at' => now()->toDateTimeString(),
+        ];
+
+        /*
+        |--------------------------------------------------------------------------
+        | Save to session for immediate page reload
+        |--------------------------------------------------------------------------
+        */
+        session()->put("cpanel_alert_contacts.{$server->id}.{$user}", $contacts);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Save to JSON file for persistence and scheduled monitor usage
+        |--------------------------------------------------------------------------
+        */
+        $allContacts = $this->readAlertContactsFile();
+
+        if (!isset($allContacts[$server->id])) {
+            $allContacts[$server->id] = [];
+        }
+
+        $allContacts[$server->id][$user] = $contacts;
+
+        Storage::disk('local')->put(
+            'cpanel-alert-contacts.json',
+            json_encode($allContacts, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Also update DeveloperUser if the account exists and columns are available
+        |--------------------------------------------------------------------------
+        */
+        $developer = DeveloperUser::where('cpanel_username', $user)->first();
+
+        if ($developer) {
+            $developer->update($this->filterDeveloperColumns([
+                'admin_phone' => $contacts['admin_phone'],
+                'admin_email' => $contacts['admin_email'],
+                'customer_phone' => $contacts['customer_phone'],
+                'customer_email' => $contacts['customer_email'],
+                'alert_phones' => $contacts['alert_phones'],
+                'alert_emails' => $contacts['alert_emails'],
+                'monitor_website' => $contacts['monitor_website'],
+                'monitor_cpanel' => $contacts['monitor_cpanel'],
+                'monitor_frameworks' => $contacts['monitor_frameworks'],
+                'send_recovery_alert' => $contacts['send_recovery_alert'],
+            ]));
+        }
+    }
+
+    private function getSavedAlertContacts(Server $server, string $user): array
+    {
+        $sessionContacts = session("cpanel_alert_contacts.{$server->id}.{$user}", []);
+
+        if (!empty($sessionContacts)) {
+            return $sessionContacts;
+        }
+
+        $allContacts = $this->readAlertContactsFile();
+
+        if (!empty($allContacts[$server->id][$user])) {
+            return $allContacts[$server->id][$user];
+        }
+
+        $developer = DeveloperUser::where('cpanel_username', $user)->first();
+
+        if ($developer) {
+            return [
+                'server_id' => $server->id,
+                'server_name' => $server->name ?? null,
+                'server_host' => $server->host ?? $server->hostname ?? $server->ip_address ?? null,
+                'cpanel_username' => $user,
+                'domain' => $developer->cpanel_domain ?? null,
+                'email' => $developer->email ?? null,
+                'admin_phone' => $developer->admin_phone ?? null,
+                'admin_email' => $developer->admin_email ?? null,
+                'customer_phone' => $developer->customer_phone ?? null,
+                'customer_email' => $developer->customer_email ?? null,
+                'alert_phones' => $developer->alert_phones ?? null,
+                'alert_emails' => $developer->alert_emails ?? null,
+                'monitor_website' => $developer->monitor_website ?? true,
+                'monitor_cpanel' => $developer->monitor_cpanel ?? true,
+                'monitor_frameworks' => $developer->monitor_frameworks ?? true,
+                'send_recovery_alert' => $developer->send_recovery_alert ?? true,
+            ];
+        }
+
+        return [
+            'server_id' => $server->id,
+            'server_name' => $server->name ?? null,
+            'server_host' => $server->host ?? $server->hostname ?? $server->ip_address ?? null,
+            'cpanel_username' => $user,
+            'admin_phone' => $server->admin_phone ?? null,
+            'admin_email' => $server->admin_email ?? null,
+            'customer_phone' => $server->customer_phone ?? null,
+            'customer_email' => $server->customer_email ?? null,
+            'alert_phones' => null,
+            'alert_emails' => null,
+            'monitor_website' => true,
+            'monitor_cpanel' => true,
+            'monitor_frameworks' => true,
+            'send_recovery_alert' => true,
+        ];
+    }
+
+    private function readAlertContactsFile(): array
+    {
+        try {
+            if (!Storage::disk('local')->exists('cpanel-alert-contacts.json')) {
+                return [];
+            }
+
+            $json = Storage::disk('local')->get('cpanel-alert-contacts.json');
+            $data = json_decode($json, true);
+
+            return is_array($data) ? $data : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /*
@@ -609,7 +893,19 @@ class CpanelAccountController extends Controller
         try {
             $response = $this->whmRequest($server, 'listpkgs');
 
-            return $response['data']['pkg'] ?? [];
+            if (!empty($response['data']['pkg'])) {
+                return $response['data']['pkg'];
+            }
+
+            if (!empty($response['package'])) {
+                return $response['package'];
+            }
+
+            if (!empty($response['data']['packages'])) {
+                return $response['data']['packages'];
+            }
+
+            return [];
         } catch (\Throwable $e) {
             return [];
         }
@@ -625,7 +921,19 @@ class CpanelAccountController extends Controller
         try {
             $response = $this->whmRequest($server, 'listips');
 
-            return $response['data']['ip'] ?? [];
+            if (!empty($response['data']['ip'])) {
+                return $response['data']['ip'];
+            }
+
+            if (!empty($response['ip'])) {
+                return $response['ip'];
+            }
+
+            if (!empty($response['data']['ips'])) {
+                return $response['data']['ips'];
+            }
+
+            return [];
         } catch (\Throwable $e) {
             return [];
         }

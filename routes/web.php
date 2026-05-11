@@ -310,6 +310,9 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/{user}/edit', [CpanelAccountController::class, 'edit'])
                 ->name('edit');
 
+                  Route::post('/{user}/alerts', [CpanelAccountController::class, 'updateAlertContacts'])
+            ->name('alerts.update');
+
             Route::post('/{user}/password', [CpanelAccountController::class, 'updatePassword'])
                 ->name('password');
 
