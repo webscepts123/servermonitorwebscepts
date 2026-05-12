@@ -18,6 +18,8 @@ use App\Http\Controllers\DeveloperWorkspaceController;
 use App\Http\Controllers\DeveloperAuthController;
 use App\Http\Controllers\DeveloperCpanelImportController;
 use App\Http\Controllers\DeveloperFileEditorController;
+use App\Http\Controllers\ProfileSecurityController;
+
 
 /*
 |--------------------------------------------------------------------------
