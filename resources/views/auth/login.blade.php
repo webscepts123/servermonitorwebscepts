@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" x-data="{ showPassword: false, loading: false }">
+<html lang="en" x-data="{ showPassword: false, loading: false, passkeyLoading: false }">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Webscepts Monitoring</title>
+
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -11,6 +13,9 @@
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+
+    {{-- Passkeys JS --}}
+    @vite(['resources/js/app.js'])
 
     <style>
         [x-cloak] {
@@ -54,6 +59,16 @@
             background: rgba(255, 255, 255, .08);
             border: 1px solid rgba(255, 255, 255, .12);
             backdrop-filter: blur(16px);
+        }
+
+        .passkey-btn {
+            background: linear-gradient(135deg, #0f172a 0%, #0b63ce 100%);
+            box-shadow: 0 16px 34px rgba(11, 99, 206, .24);
+        }
+
+        .passkey-btn:hover {
+            background: linear-gradient(135deg, #020617 0%, #084fa6 100%);
+            transform: translateY(-1px);
         }
     </style>
 </head>
@@ -146,6 +161,13 @@
                     </p>
                 </div>
 
+                @if(session('success'))
+                    <div class="bg-green-100 text-green-700 border border-green-300 rounded-2xl p-4 mb-5 flex gap-3">
+                        <i class="fa-solid fa-circle-check mt-1"></i>
+                        <span class="font-semibold">{{ session('success') }}</span>
+                    </div>
+                @endif
+
                 @if(session('error'))
                     <div class="bg-red-100 text-red-700 border border-red-300 rounded-2xl p-4 mb-5 flex gap-3">
                         <i class="fa-solid fa-circle-exclamation mt-1"></i>
@@ -164,7 +186,38 @@
                     </div>
                 @endif
 
-                <form method="POST" action="{{ route('login.submit') ?? '/login' }}" @submit="loading = true">
+                {{-- Fingerprint / Passkey Login --}}
+                <div class="mb-6">
+                    <button type="button"
+                            id="passkeyLoginBtn"
+                            x-bind:disabled="passkeyLoading"
+                            class="passkey-btn w-full rounded-2xl text-white py-4 font-black transition flex items-center justify-center gap-2 disabled:opacity-70">
+                        <span x-show="!passkeyLoading">
+                            <i class="fa-solid fa-fingerprint mr-2"></i>
+                            Login with Fingerprint / Passkey
+                        </span>
+
+                        <span x-cloak x-show="passkeyLoading">
+                            <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+                            Opening passkey...
+                        </span>
+                    </button>
+
+                    <p class="text-xs text-slate-500 text-center mt-2 font-semibold">
+                        Works with Mac Touch ID, Chrome passkey, Windows Hello, iPhone Face ID and Android fingerprint.
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="h-px bg-slate-200 flex-1"></div>
+                    <span class="text-[11px] font-black text-slate-400">OR LOGIN WITH PASSWORD</span>
+                    <div class="h-px bg-slate-200 flex-1"></div>
+                </div>
+
+                {{-- Normal Password Login --}}
+                <form method="POST"
+                      action="{{ Route::has('login.submit') ? route('login.submit') : url('/login') }}"
+                      @submit="loading = true">
                     @csrf
 
                     <div class="space-y-5">
@@ -275,6 +328,50 @@
     </div>
 
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const passkeyButton = document.getElementById('passkeyLoginBtn');
+
+        if (!passkeyButton) {
+            return;
+        }
+
+        passkeyButton.addEventListener('click', async function () {
+            const alpineRoot = document.documentElement.__x
+                ? document.documentElement
+                : document.querySelector('[x-data]');
+
+            try {
+                if (typeof Alpine !== 'undefined' && alpineRoot) {
+                    Alpine.$data(alpineRoot).passkeyLoading = true;
+                }
+
+                if (!window.Passkeys || typeof window.Passkeys.verify !== 'function') {
+                    throw new Error('Passkeys JavaScript is not loaded. Run npm install @laravel/passkeys and npm run build.');
+                }
+
+                await window.Passkeys.verify();
+
+                window.location.href = "{{ Route::has('dashboard') ? route('dashboard') : url('/dashboard') }}";
+            } catch (error) {
+                console.error(error);
+
+                let message = 'Passkey login failed or cancelled.';
+
+                if (error && error.message) {
+                    message = error.message;
+                }
+
+                alert(message);
+            } finally {
+                if (typeof Alpine !== 'undefined' && alpineRoot) {
+                    Alpine.$data(alpineRoot).passkeyLoading = false;
+                }
+            }
+        });
+    });
+</script>
 
 </body>
 </html>

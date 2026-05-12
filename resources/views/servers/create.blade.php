@@ -18,7 +18,7 @@
                         Add New Server
                     </h1>
                     <p class="text-slate-300 mt-2">
-                        Configure SSH monitoring, cPanel/Plesk access, backups, SMS alerts and email alerts.
+                        Configure SSH monitoring, WHM/cPanel API token, backups, SMS alerts and email alerts.
                     </p>
 
                     <div class="mt-4 flex flex-wrap gap-2">
@@ -27,11 +27,11 @@
                         </span>
 
                         <span class="px-4 py-2 rounded-full bg-green-500/20 border border-green-400/40 text-green-100 text-xs font-bold">
-                            <i class="fa-solid fa-message mr-1"></i> SMS Alerts
+                            <i class="fa-solid fa-key mr-1"></i> WHM API Token
                         </span>
 
                         <span class="px-4 py-2 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100 text-xs font-bold">
-                            <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Backup Ready
+                            <i class="fa-solid fa-bell mr-1"></i> SMS + Email Alerts
                         </span>
                     </div>
                 </div>
@@ -62,9 +62,13 @@
 
         {{-- Tabs --}}
         <div class="bg-white rounded-3xl shadow border border-slate-100 p-3 sticky top-4 z-20 mb-6">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
                 <button type="button" class="tab-btn active-tab" data-tab="basic">
                     <i class="fa-solid fa-server mr-2"></i>Basic
+                </button>
+
+                <button type="button" class="tab-btn" data-tab="whm">
+                    <i class="fa-solid fa-key mr-2"></i>WHM API
                 </button>
 
                 <button type="button" class="tab-btn" data-tab="alerts">
@@ -153,31 +157,34 @@
                         </div>
 
                         <div>
-                            <label class="form-label">Username</label>
+                            <label class="form-label">SSH Username</label>
                             <input type="text"
                                    name="username"
-                                   value="{{ old('username') }}"
+                                   value="{{ old('username', 'root') }}"
                                    class="form-input-modern"
                                    placeholder="root or reseller username"
                                    required>
                         </div>
 
                         <div class="md:col-span-2">
-                            <label class="form-label">Password</label>
+                            <label class="form-label">SSH / Root Password</label>
                             <div class="relative">
                                 <input type="password"
                                        name="password"
                                        id="passwordInput"
                                        class="form-input-modern pr-12"
-                                       placeholder="Enter server password"
-                                       required>
+                                       placeholder="Enter server password">
 
                                 <button type="button"
-                                        onclick="togglePassword()"
+                                        onclick="togglePassword('passwordInput', 'passwordIcon')"
                                         class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
                                     <i class="fa-solid fa-eye" id="passwordIcon"></i>
                                 </button>
                             </div>
+
+                            <p class="text-xs text-slate-500 mt-2">
+                                Optional if you use WHM API token only, but required for SSH checks.
+                            </p>
 
                             <div class="mt-3">
                                 <div class="flex justify-between text-xs mb-1">
@@ -220,9 +227,7 @@
 
                 {{-- Preview --}}
                 <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-4">
-                        Live Preview
-                    </h3>
+                    <h3 class="text-xl font-black text-slate-800 mb-4">Live Preview</h3>
 
                     <div class="rounded-3xl bg-slate-950 p-5 text-white">
                         <div class="flex items-center gap-3">
@@ -247,6 +252,11 @@
                             </div>
 
                             <div class="flex justify-between gap-3">
+                                <span class="text-slate-400">WHM</span>
+                                <span class="font-bold" id="previewWhm">Token First</span>
+                            </div>
+
+                            <div class="flex justify-between gap-3">
                                 <span class="text-slate-400">Panel</span>
                                 <span class="font-bold" id="previewPanel">Auto Detect</span>
                             </div>
@@ -261,11 +271,127 @@
                     <div class="mt-5 rounded-2xl border p-4">
                         <h4 class="font-black text-slate-800">Helpful defaults</h4>
                         <p class="text-sm text-slate-500 mt-1">
-                            For WHM/cPanel auto-login, use root or reseller credentials with WHM permission.
+                            For WHM/cPanel auto-login, use a root or reseller WHM token with required permissions.
                         </p>
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        {{-- WHM API Tab --}}
+        <div class="tab-panel hidden" id="tab-whm">
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div class="xl:col-span-2 bg-white p-6 rounded-3xl shadow border border-slate-100">
+                    <div class="flex items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="text-xl font-black text-slate-800">WHM / cPanel API Access</h3>
+                            <p class="text-sm text-slate-500">
+                                WHM API token will be used first. Password fallback is only used when token is empty or fails.
+                            </p>
+                        </div>
+
+                        <div class="w-14 h-14 rounded-2xl bg-green-100 text-green-700 flex items-center justify-center">
+                            <i class="fa-solid fa-key text-xl"></i>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="form-label">WHM Username</label>
+                            <input type="text"
+                                   name="whm_username"
+                                   value="{{ old('whm_username', old('username', 'root')) }}"
+                                   class="form-input-modern"
+                                   placeholder="root">
+                            <p class="text-xs text-slate-500 mt-2">
+                                Usually root or reseller username.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label class="form-label">WHM Port</label>
+                            <input type="number"
+                                   name="whm_port"
+                                   value="{{ old('whm_port', 2087) }}"
+                                   class="form-input-modern"
+                                   min="1"
+                                   max="65535">
+                        </div>
+
+                        <div>
+                            <label class="form-label">WHM Auth Type</label>
+                            <select name="whm_auth_type" class="form-input-modern">
+                                <option value="token" {{ old('whm_auth_type', 'token') === 'token' ? 'selected' : '' }}>Token First</option>
+                                <option value="password" {{ old('whm_auth_type') === 'password' ? 'selected' : '' }}>Password Only</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="form-label">SSL Verify</label>
+                            <label class="toggle-card">
+                                <input type="checkbox"
+                                       name="whm_ssl_verify"
+                                       value="1"
+                                       class="toggle-input"
+                                       {{ old('whm_ssl_verify') ? 'checked' : '' }}>
+                                <div>
+                                    <p class="font-black text-slate-800">Verify WHM SSL</p>
+                                    <p class="text-xs text-slate-500">Usually off for self-signed WHM SSL.</p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label class="form-label">WHM API Token</label>
+                            <textarea name="whm_token"
+                                      rows="5"
+                                      class="form-input-modern"
+                                      placeholder="Paste only token value. Do not add 'whm root:'">{{ old('whm_token') }}</textarea>
+                            <p class="text-xs text-slate-500 mt-2">
+                                Correct format: token only. Wrong format: whm root:TOKEN.
+                            </p>
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label class="form-label">WHM Password Fallback</label>
+                            <div class="relative">
+                                <input type="password"
+                                       name="whm_password"
+                                       id="whmPasswordInput"
+                                       class="form-input-modern pr-12"
+                                       placeholder="Optional WHM password fallback">
+
+                                <button type="button"
+                                        onclick="togglePassword('whmPasswordInput', 'whmPasswordIcon')"
+                                        class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900">
+                                    <i class="fa-solid fa-eye" id="whmPasswordIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
+                    <h3 class="text-xl font-black text-slate-800 mb-4">Token Notes</h3>
+
+                    <div class="space-y-4 text-sm text-slate-600">
+                        <div class="rounded-2xl bg-green-50 border border-green-200 p-4">
+                            <p class="font-black text-green-800">Required WHM permissions</p>
+                            <p class="mt-1">listaccts, createacct, listpkgs, listips, create_user_session, passwd, changepackage, setsiteip.</p>
+                        </div>
+
+                        <div class="rounded-2xl bg-yellow-50 border border-yellow-200 p-4">
+                            <p class="font-black text-yellow-800">Token priority</p>
+                            <p class="mt-1">System tries WHM token first. If token fails and password exists, it falls back to password.</p>
+                        </div>
+
+                        <div class="rounded-2xl bg-blue-50 border border-blue-200 p-4">
+                            <p class="font-black text-blue-800">Security</p>
+                            <p class="mt-1">Controller should encrypt token before saving.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -274,12 +400,8 @@
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
                 <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-1">
-                        Admin Alerts
-                    </h3>
-                    <p class="text-sm text-slate-500 mb-6">
-                        Notifications sent to your internal team.
-                    </p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Admin Alerts</h3>
+                    <p class="text-sm text-slate-500 mb-6">Notifications sent to your internal team.</p>
 
                     <div class="space-y-5">
                         <div>
@@ -298,6 +420,22 @@
                                    value="{{ old('admin_phone') }}"
                                    class="form-input-modern"
                                    placeholder="947XXXXXXXX">
+                        </div>
+
+                        <div>
+                            <label class="form-label">Extra Alert Emails</label>
+                            <textarea name="alert_emails"
+                                      rows="3"
+                                      class="form-input-modern"
+                                      placeholder="support@example.com, owner@example.com">{{ old('alert_emails') }}</textarea>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Extra Alert Phones</label>
+                            <textarea name="alert_phones"
+                                      rows="3"
+                                      class="form-input-modern"
+                                      placeholder="947XXXXXXXX, 947YYYYYYYY">{{ old('alert_phones') }}</textarea>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -321,12 +459,8 @@
                 </div>
 
                 <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-1">
-                        Customer Alerts
-                    </h3>
-                    <p class="text-sm text-slate-500 mb-6">
-                        Notifications sent to your customer when server or website is down.
-                    </p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Customer Alerts</h3>
+                    <p class="text-sm text-slate-500 mb-6">Notifications sent to your customer when server or website is down.</p>
 
                     <div class="space-y-5">
                         <div>
@@ -355,6 +489,40 @@
                                    class="form-input-modern"
                                    placeholder="947XXXXXXXX">
                         </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="toggle-card">
+                                <input type="checkbox" name="monitor_website" value="1" class="toggle-input" {{ old('monitor_website', true) ? 'checked' : '' }}>
+                                <div>
+                                    <p class="font-black text-slate-800">Website Uptime</p>
+                                    <p class="text-xs text-slate-500">Website down/recovery.</p>
+                                </div>
+                            </label>
+
+                            <label class="toggle-card">
+                                <input type="checkbox" name="monitor_cpanel" value="1" class="toggle-input" {{ old('monitor_cpanel', true) ? 'checked' : '' }}>
+                                <div>
+                                    <p class="font-black text-slate-800">cPanel / WHM</p>
+                                    <p class="text-xs text-slate-500">Ports 2083/2087.</p>
+                                </div>
+                            </label>
+
+                            <label class="toggle-card">
+                                <input type="checkbox" name="monitor_frameworks" value="1" class="toggle-input" {{ old('monitor_frameworks', true) ? 'checked' : '' }}>
+                                <div>
+                                    <p class="font-black text-slate-800">CMS / Framework</p>
+                                    <p class="text-xs text-slate-500">Laravel, PHP, CMS issues.</p>
+                                </div>
+                            </label>
+
+                            <label class="toggle-card">
+                                <input type="checkbox" name="send_recovery_alert" value="1" class="toggle-input" {{ old('send_recovery_alert', true) ? 'checked' : '' }}>
+                                <div>
+                                    <p class="font-black text-slate-800">Recovery Alert</p>
+                                    <p class="text-xs text-slate-500">Notify after fixed.</p>
+                                </div>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -366,12 +534,8 @@
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
                 <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-1">
-                        Backup Settings
-                    </h3>
-                    <p class="text-sm text-slate-500 mb-6">
-                        Configure local, remote and Google Drive backup locations.
-                    </p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Backup Settings</h3>
+                    <p class="text-sm text-slate-500 mb-6">Configure local, remote and Google Drive backup locations.</p>
 
                     <div class="space-y-5">
                         <div>
@@ -389,7 +553,7 @@
                                    name="local_backup_path"
                                    value="{{ old('local_backup_path') }}"
                                    class="form-input-modern"
-                                   placeholder="/var/backups/webscept">
+                                   placeholder="/var/backups/webscepts">
                         </div>
 
                         <div>
@@ -416,12 +580,8 @@
                 </div>
 
                 <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-1">
-                        Disk Rules
-                    </h3>
-                    <p class="text-sm text-slate-500 mb-6">
-                        Trigger warnings and transfer actions based on disk usage.
-                    </p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Disk Rules</h3>
+                    <p class="text-sm text-slate-500 mb-6">Trigger warnings and transfer actions based on disk usage.</p>
 
                     <div class="space-y-6">
                         <div>
@@ -470,19 +630,15 @@
             <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
                 <div class="xl:col-span-2 bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-1">
-                        Security Checklist
-                    </h3>
-                    <p class="text-sm text-slate-500 mb-6">
-                        Use these recommendations before saving the server.
-                    </p>
+                    <h3 class="text-xl font-black text-slate-800 mb-1">Security Checklist</h3>
+                    <p class="text-sm text-slate-500 mb-6">Use these recommendations before saving the server.</p>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="security-card">
                             <i class="fa-solid fa-key text-blue-600"></i>
                             <div>
-                                <h4>Use SSH keys if possible</h4>
-                                <p>Passwords work, but keys are safer for production.</p>
+                                <h4>Use WHM API token</h4>
+                                <p>Token is safer than storing root password for WHM API actions.</p>
                             </div>
                         </div>
 
@@ -498,156 +654,123 @@
                             <i class="fa-solid fa-lock text-purple-600"></i>
                             <div>
                                 <h4>Restrict root access</h4>
-                                <p>Use root only when WHM auto-login is required.</p>
+                                <p>Use root only when WHM permissions are required.</p>
                             </div>
                         </div>
 
                         <div class="security-card">
                             <i class="fa-solid fa-cloud-arrow-up text-orange-600"></i>
                             <div>
-                                <h4>Enable backups</h4>
-                                <p>Protect customer files with daily backup strategy.</p>
+                                <h4>Configure backups</h4>
+                                <p>Use local + remote backup for disaster recovery.</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="bg-white p-6 rounded-3xl shadow border border-slate-100">
-                    <h3 class="text-xl font-black text-slate-800 mb-4">
-                        Save Summary
-                    </h3>
-
-                    <div class="space-y-3 text-sm">
-                        <div class="flex justify-between gap-4">
-                            <span class="text-slate-500">Monitoring</span>
-                            <span class="font-black text-green-600">Ready</span>
-                        </div>
-
-                        <div class="flex justify-between gap-4">
-                            <span class="text-slate-500">SMS</span>
-                            <span class="font-black" id="summarySms">Disabled</span>
-                        </div>
-
-                        <div class="flex justify-between gap-4">
-                            <span class="text-slate-500">Email</span>
-                            <span class="font-black" id="summaryEmail">Enabled</span>
-                        </div>
-
-                        <div class="flex justify-between gap-4">
-                            <span class="text-slate-500">Backups</span>
-                            <span class="font-black" id="summaryBackup">Optional</span>
-                        </div>
-                    </div>
+                    <h3 class="text-xl font-black text-slate-800 mb-4">Before Save</h3>
+                    <ul class="space-y-3 text-sm text-slate-600">
+                        <li><i class="fa-solid fa-check text-green-600 mr-2"></i>Check server IP/host is correct.</li>
+                        <li><i class="fa-solid fa-check text-green-600 mr-2"></i>Paste WHM token without prefix.</li>
+                        <li><i class="fa-solid fa-check text-green-600 mr-2"></i>Add admin alert phone/email.</li>
+                        <li><i class="fa-solid fa-check text-green-600 mr-2"></i>Set disk warning and transfer percentage.</li>
+                    </ul>
                 </div>
 
             </div>
         </div>
 
-        {{-- Bottom Actions --}}
-        <div class="mt-6 bg-white rounded-3xl shadow border border-slate-100 p-5">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div>
-                    <h3 class="font-black text-slate-800">Ready to save?</h3>
-                    <p class="text-sm text-slate-500">
-                        Server password will be encrypted before saving.
-                    </p>
-                </div>
+        {{-- Submit --}}
+        <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6">
+            <a href="{{ route('servers.index') }}"
+               class="px-6 py-3 rounded-2xl bg-slate-200 text-slate-800 hover:bg-slate-300 font-black text-center">
+                Cancel
+            </a>
 
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <a href="{{ route('servers.index') }}"
-                       class="text-center px-6 py-3 rounded-2xl bg-slate-200 text-slate-800 hover:bg-slate-300 font-bold">
-                        Cancel
-                    </a>
-
-                    <button type="submit"
-                            class="px-8 py-3 rounded-2xl bg-blue-600 text-white hover:bg-blue-700 font-black shadow-lg">
-                        <i class="fa-solid fa-floppy-disk mr-2"></i>Save Server
-                    </button>
-                </div>
-            </div>
+            <button type="submit"
+                    class="px-8 py-3 rounded-2xl bg-blue-600 text-white hover:bg-blue-700 font-black">
+                <i class="fa-solid fa-floppy-disk mr-2"></i>
+                Save Server
+            </button>
         </div>
 
     </form>
-
 </div>
 
 <style>
     .tab-btn {
         padding: 12px 14px;
-        border-radius: 16px;
+        border-radius: 18px;
         font-weight: 900;
         color: #475569;
-        background: #f1f5f9;
+        background: #f8fafc;
         transition: all .2s ease;
-        font-size: 14px;
     }
 
-    .tab-btn:hover {
-        background: #e2e8f0;
-        color: #0f172a;
-    }
-
+    .tab-btn:hover,
     .active-tab {
-        background: #0f172a !important;
-        color: white !important;
-        box-shadow: 0 10px 25px rgba(15, 23, 42, .18);
+        color: #ffffff;
+        background: #2563eb;
+        box-shadow: 0 10px 25px rgba(37, 99, 235, .25);
     }
 
     .form-label {
         display: block;
-        margin-bottom: 6px;
-        font-weight: 800;
+        font-size: 13px;
+        font-weight: 900;
         color: #334155;
-        font-size: 14px;
+        margin-bottom: 8px;
     }
 
     .form-input-modern {
         width: 100%;
-        border: 1px solid #cbd5e1;
+        border: 1px solid #dbe3ef;
         border-radius: 16px;
-        padding: 12px 16px;
+        padding: 13px 15px;
         outline: none;
+        color: #0f172a;
+        background: #ffffff;
+        font-weight: 600;
         transition: all .2s ease;
-        background: white;
     }
 
     .form-input-modern:focus {
-        border-color: #3b82f6;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, .15);
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, .12);
     }
 
     .toggle-card {
+        display: flex;
+        align-items: center;
+        gap: 13px;
         border: 1px solid #e2e8f0;
         border-radius: 18px;
-        padding: 16px;
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
+        padding: 14px;
         cursor: pointer;
-        background: #fff;
-        transition: all .2s ease;
-    }
-
-    .toggle-card:hover {
-        box-shadow: 0 12px 28px rgba(15, 23, 42, .08);
-        transform: translateY(-1px);
+        background: #f8fafc;
     }
 
     .toggle-input {
-        margin-top: 4px;
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
         accent-color: #2563eb;
+        flex: 0 0 auto;
     }
 
     .security-card {
-        border: 1px solid #e2e8f0;
-        border-radius: 20px;
-        padding: 18px;
         display: flex;
         gap: 14px;
         align-items: flex-start;
-        background: #fff;
+        padding: 18px;
+        border: 1px solid #e2e8f0;
+        border-radius: 20px;
+        background: #f8fafc;
+    }
+
+    .security-card i {
+        font-size: 22px;
+        margin-top: 2px;
     }
 
     .security-card h4 {
@@ -656,58 +779,55 @@
     }
 
     .security-card p {
+        margin-top: 4px;
         font-size: 13px;
         color: #64748b;
-        margin-top: 4px;
     }
 </style>
 
 <script>
-    const tabs = document.querySelectorAll('.tab-btn');
-    const panels = document.querySelectorAll('.tab-panel');
+    function togglePassword(inputId, iconId) {
+        const input = document.getElementById(inputId);
+        const icon = document.getElementById(iconId);
 
-    tabs.forEach(button => {
-        button.addEventListener('click', () => {
-            const tab = button.dataset.tab;
+        if (!input) {
+            return;
+        }
 
-            tabs.forEach(item => item.classList.remove('active-tab'));
-            panels.forEach(panel => panel.classList.add('hidden'));
+        input.type = input.type === 'password' ? 'text' : 'password';
 
-            button.classList.add('active-tab');
-            document.getElementById('tab-' + tab).classList.remove('hidden');
-
-            localStorage.setItem('serverCreateTab', tab);
-        });
-    });
-
-    const savedTab = localStorage.getItem('serverCreateTab');
-    if (savedTab && document.querySelector(`[data-tab="${savedTab}"]`)) {
-        document.querySelector(`[data-tab="${savedTab}"]`).click();
-    }
-
-    function togglePassword() {
-        const input = document.getElementById('passwordInput');
-        const icon = document.getElementById('passwordIcon');
-
-        if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-        } else {
-            input.type = 'password';
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
+        if (icon) {
+            icon.classList.toggle('fa-eye');
+            icon.classList.toggle('fa-eye-slash');
         }
     }
 
-    const passwordInput = document.getElementById('passwordInput');
-    const strengthBar = document.getElementById('strengthBar');
-    const strengthText = document.getElementById('strengthText');
+    document.addEventListener('DOMContentLoaded', function () {
+        const buttons = document.querySelectorAll('.tab-btn');
+        const panels = document.querySelectorAll('.tab-panel');
 
-    if (passwordInput) {
-        passwordInput.addEventListener('input', function () {
-            const value = this.value;
+        buttons.forEach(button => {
+            button.addEventListener('click', function () {
+                const tab = this.dataset.tab;
+
+                buttons.forEach(btn => btn.classList.remove('active-tab'));
+                this.classList.add('active-tab');
+
+                panels.forEach(panel => {
+                    panel.classList.add('hidden');
+                });
+
+                document.getElementById('tab-' + tab)?.classList.remove('hidden');
+            });
+        });
+
+        const passwordInput = document.getElementById('passwordInput');
+        const strengthBar = document.getElementById('strengthBar');
+        const strengthText = document.getElementById('strengthText');
+
+        passwordInput?.addEventListener('input', function () {
             let score = 0;
+            const value = this.value;
 
             if (value.length >= 8) score += 25;
             if (/[A-Z]/.test(value)) score += 25;
@@ -715,8 +835,7 @@
             if (/[^A-Za-z0-9]/.test(value)) score += 25;
 
             strengthBar.style.width = score + '%';
-
-            strengthBar.classList.remove('bg-slate-400', 'bg-red-500', 'bg-yellow-500', 'bg-green-600');
+            strengthBar.className = 'h-2 rounded-full transition-all';
 
             if (score <= 25) {
                 strengthBar.classList.add('bg-red-500');
@@ -732,66 +851,64 @@
                 strengthText.className = 'font-bold text-green-600';
             }
         });
-    }
 
-    const fields = {
-        name: document.querySelector('[name="name"]'),
-        host: document.querySelector('[name="host"]'),
-        website: document.querySelector('[name="website_url"]'),
-        ssh: document.querySelector('[name="ssh_port"]'),
-        panel: document.querySelector('[name="panel_type"]'),
-        sms: document.querySelector('[name="sms_alerts_enabled"]'),
-        email: document.querySelector('[name="email_alerts_enabled"]'),
-        backup: document.querySelector('[name="backup_path"]')
-    };
+        const fields = {
+            name: document.querySelector('[name="name"]'),
+            host: document.querySelector('[name="host"]'),
+            website: document.querySelector('[name="website_url"]'),
+            ssh: document.querySelector('[name="ssh_port"]'),
+            panel: document.querySelector('[name="panel_type"]'),
+            whmAuth: document.querySelector('[name="whm_auth_type"]'),
+        };
 
-    function updatePreview() {
-        document.getElementById('previewName').innerText = fields.name?.value || 'New Server';
-        document.getElementById('previewHost').innerText = fields.host?.value || 'Not set';
-        document.getElementById('previewSsh').innerText = ':' + (fields.ssh?.value || '22');
+        function updatePreview() {
+            document.getElementById('previewName').innerText = fields.name?.value || 'New Server';
+            document.getElementById('previewHost').innerText = fields.host?.value || 'Not set';
+            document.getElementById('previewSsh').innerText = ':' + (fields.ssh?.value || '22');
 
-        let panelValue = fields.panel?.value || 'Auto Detect';
-        document.getElementById('previewPanel').innerText = panelValue === 'cpanel'
-            ? 'cPanel / WHM'
-            : panelValue === 'plesk'
-                ? 'Plesk'
-                : panelValue === 'none'
-                    ? 'No Panel'
-                    : 'Auto Detect';
+            let panelValue = fields.panel?.value || 'Auto Detect';
+            document.getElementById('previewPanel').innerText = panelValue === 'cpanel'
+                ? 'cPanel / WHM'
+                : panelValue === 'plesk'
+                    ? 'Plesk'
+                    : panelValue === 'none'
+                        ? 'No Panel'
+                        : 'Auto Detect';
 
-        document.getElementById('previewWebsite').innerText = fields.website?.value || 'N/A';
+            document.getElementById('previewWhm').innerText = fields.whmAuth?.value === 'password'
+                ? 'Password Only'
+                : 'Token First';
 
-        document.getElementById('summarySms').innerText = fields.sms?.checked ? 'Enabled' : 'Disabled';
-        document.getElementById('summarySms').className = fields.sms?.checked ? 'font-black text-green-600' : 'font-black text-slate-500';
-
-        document.getElementById('summaryEmail').innerText = fields.email?.checked ? 'Enabled' : 'Disabled';
-        document.getElementById('summaryEmail').className = fields.email?.checked ? 'font-black text-green-600' : 'font-black text-slate-500';
-
-        document.getElementById('summaryBackup').innerText = fields.backup?.value ? 'Configured' : 'Optional';
-        document.getElementById('summaryBackup').className = fields.backup?.value ? 'font-black text-green-600' : 'font-black text-slate-500';
-    }
-
-    Object.values(fields).forEach(field => {
-        if (field) {
-            field.addEventListener('input', updatePreview);
-            field.addEventListener('change', updatePreview);
+            document.getElementById('previewWebsite').innerText = fields.website?.value || 'N/A';
         }
+
+        Object.values(fields).forEach(field => {
+            if (field) {
+                field.addEventListener('input', updatePreview);
+                field.addEventListener('change', updatePreview);
+            }
+        });
+
+        updatePreview();
+
+        const warningRange = document.getElementById('warningRange');
+        const transferRange = document.getElementById('transferRange');
+
+        function updateRanges() {
+            if (!warningRange || !transferRange) {
+                return;
+            }
+
+            document.getElementById('warningValue').innerText = warningRange.value + '%';
+            document.getElementById('transferValue').innerText = transferRange.value + '%';
+            document.getElementById('warningPreview').innerText = warningRange.value + '%';
+            document.getElementById('transferPreview').innerText = transferRange.value + '%';
+        }
+
+        warningRange?.addEventListener('input', updateRanges);
+        transferRange?.addEventListener('input', updateRanges);
+        updateRanges();
     });
-
-    updatePreview();
-
-    const warningRange = document.getElementById('warningRange');
-    const transferRange = document.getElementById('transferRange');
-
-    function updateRanges() {
-        document.getElementById('warningValue').innerText = warningRange.value + '%';
-        document.getElementById('transferValue').innerText = transferRange.value + '%';
-        document.getElementById('warningPreview').innerText = warningRange.value + '%';
-        document.getElementById('transferPreview').innerText = transferRange.value + '%';
-    }
-
-    warningRange?.addEventListener('input', updateRanges);
-    transferRange?.addEventListener('input', updateRanges);
 </script>
 
 @endsection
