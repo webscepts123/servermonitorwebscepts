@@ -13,8 +13,12 @@ return [
     |
     */
 
-    'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
+    'relying_party_id' => env('PASSKEYS_RELYING_PARTY_ID', parse_url(env('APP_URL'), PHP_URL_HOST)),
 
+    'relying_party_name' => env(
+            'PASSKEYS_RELYING_PARTY_NAME',
+            config('app.name', 'Webscepts Server Monitoring')
+        ),
     /*
     |--------------------------------------------------------------------------
     | Allowed Origins
@@ -25,10 +29,10 @@ return [
     | reports one of these origins. Defaults to your application URL.
     |
     */
-
-    'allowed_origins' => [
-        config('app.url'),
-    ],
+    'allowed_origins' => array_filter(array_map('trim', explode(',', env(
+        'PASSKEYS_ALLOWED_ORIGINS',
+        env('APP_URL', 'https://systemmonitor.webscepts.com')
+    )))),
 
     /*
     |--------------------------------------------------------------------------
