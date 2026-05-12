@@ -222,21 +222,7 @@ Route::middleware(['auth'])->group(function () {
         ->name('dashboard');
 
 
-       /*
-    |--------------------------------------------------------------------------
-    | Profile Security / Fingerprint / Passkeys
-    |--------------------------------------------------------------------------
-    | User must login normally first, then open:
-    | https://systemmonitor.webscepts.com/profile/security
-    |--------------------------------------------------------------------------
-    */
 
-
-    Route::get('/profile/security', [\App\Http\Controllers\ProfileSecurityController::class, 'index'])
-        ->name('profile.security');
-
-    Route::get('/profile/passkeys', [\App\Http\Controllers\PasskeyPageController::class, 'index'])
-        ->name('profile.passkeys');
 
     /*
     |--------------------------------------------------------------------------
@@ -759,4 +745,20 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout'])
         ->name('logout');
+
+        /*
+    |--------------------------------------------------------------------------
+    | Profile Security Direct Route Fix
+    |--------------------------------------------------------------------------
+    | Keep this outside developer subdomain group.
+    |--------------------------------------------------------------------------
+    */
+
+    Route::middleware(['web', 'auth'])->group(function () {
+        Route::get('/profile/security', [\App\Http\Controllers\ProfileSecurityController::class, 'index'])
+            ->name('profile.security');
+
+        Route::get('/profile/passkeys', [\App\Http\Controllers\PasskeyPageController::class, 'index'])
+            ->name('profile.passkeys');
+    });
 });
