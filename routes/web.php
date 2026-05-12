@@ -19,6 +19,7 @@ use App\Http\Controllers\DeveloperAuthController;
 use App\Http\Controllers\DeveloperCpanelImportController;
 use App\Http\Controllers\DeveloperFileEditorController;
 use App\Http\Controllers\ProfileSecurityController;
+use App\Http\Controllers\PasskeyPageController;
 
 
 /*
@@ -32,13 +33,19 @@ use App\Http\Controllers\ProfileSecurityController;
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['web', 'auth'])->group(function () {
-    Route::get('/profile/security', [ProfileSecurityController::class, 'index'])
-        ->name('profile.security');
 
-    Route::get('/profile/passkeys', [PasskeyPageController::class, 'index'])
-        ->name('profile.passkeys');
-});
+
+Route::get('/profile/security', [ProfileSecurityController::class, 'index'])
+    ->middleware(['web', 'auth'])
+    ->name('profile.security');
+
+Route::get('/profile/passkeys', [PasskeyPageController::class, 'index'])
+    ->middleware(['web', 'auth'])
+    ->name('profile.passkeys');
+
+Route::get('/profile-security', [ProfileSecurityController::class, 'index'])
+    ->middleware(['web', 'auth'])
+    ->name('profile.security.direct');
 
 
 /*
@@ -766,5 +773,5 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])
         ->name('logout');
 
-   
+    
 });
