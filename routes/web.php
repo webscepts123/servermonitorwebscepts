@@ -231,12 +231,12 @@ Route::middleware(['auth'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::get('/profile/security', [ProfileSecurityController::class, 'index'])
+
+    Route::get('/profile/security', [\App\Http\Controllers\ProfileSecurityController::class, 'index'])
         ->name('profile.security');
 
-    Route::get('/profile/passkeys', function () {
-        return redirect()->route('profile.security');
-    })->name('profile.passkeys');
+    Route::get('/profile/passkeys', [\App\Http\Controllers\PasskeyPageController::class, 'index'])
+        ->name('profile.passkeys');
 
     /*
     |--------------------------------------------------------------------------
