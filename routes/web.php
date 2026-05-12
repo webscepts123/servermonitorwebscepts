@@ -219,6 +219,23 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->name('dashboard');
 
+
+       /*
+    |--------------------------------------------------------------------------
+    | Profile Security / Fingerprint / Passkeys
+    |--------------------------------------------------------------------------
+    | User must login normally first, then open:
+    | https://systemmonitor.webscepts.com/profile/security
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/profile/security', [ProfileSecurityController::class, 'index'])
+        ->name('profile.security');
+
+    Route::get('/profile/passkeys', function () {
+        return redirect()->route('profile.security');
+    })->name('profile.passkeys');
+
     /*
     |--------------------------------------------------------------------------
     | Panel Account Landing Pages

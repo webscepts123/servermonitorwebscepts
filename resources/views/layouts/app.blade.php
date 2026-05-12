@@ -250,6 +250,11 @@
                         ['SSH Attempts', 'security.ssh', 'fa-key', ['security.ssh']],
                     ],
 
+                    'Profile' => [
+                        ['Profile Security', 'profile.security', 'fa-fingerprint', ['profile.security', 'profile.passkeys']],
+                    ],
+
+
                     'Technology' => [
                         ['SentinelCore', 'technology.index', 'fa-shield-virus', ['technology.index']],
                         ['Web Scanner', 'technology.webscanner.index', 'fa-magnifying-glass-chart', ['technology.webscanner.*']],
