@@ -23,6 +23,26 @@ use App\Http\Controllers\ProfileSecurityController;
 
 /*
 |--------------------------------------------------------------------------
+| Profile Security Direct Routes
+|--------------------------------------------------------------------------
+| IMPORTANT:
+| Keep these routes outside the developer subdomain group.
+| This makes them work on:
+| https://systemmonitor.webscepts.com/profile/security
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['web', 'auth'])->group(function () {
+    Route::get('/profile/security', [ProfileSecurityController::class, 'index'])
+        ->name('profile.security');
+
+    Route::get('/profile/passkeys', [PasskeyPageController::class, 'index'])
+        ->name('profile.passkeys');
+});
+
+
+/*
+|--------------------------------------------------------------------------
 | Developer Codes Subdomain
 |--------------------------------------------------------------------------
 | Developer portal:
@@ -746,19 +766,5 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])
         ->name('logout');
 
-        /*
-    |--------------------------------------------------------------------------
-    | Profile Security Direct Route Fix
-    |--------------------------------------------------------------------------
-    | Keep this outside developer subdomain group.
-    |--------------------------------------------------------------------------
-    */
-
-    Route::middleware(['web', 'auth'])->group(function () {
-        Route::get('/profile/security', [\App\Http\Controllers\ProfileSecurityController::class, 'index'])
-            ->name('profile.security');
-
-        Route::get('/profile/passkeys', [\App\Http\Controllers\PasskeyPageController::class, 'index'])
-            ->name('profile.passkeys');
-    });
+   
 });
