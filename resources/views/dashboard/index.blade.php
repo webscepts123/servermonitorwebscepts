@@ -17,6 +17,13 @@
     $latestSecurityAlerts = $latestSecurityAlerts ?? collect();
     $frameworkSecurity = $frameworkSecurity ?? [];
 
+    // Build latest check lookup so this blade still works even if controller did not attach latest_check.
+    $latestChecksByServer = collect($latestChecks)->filter(function ($check) {
+        return !empty($check->server_id);
+    })->sortByDesc(function ($check) {
+        return $check->created_at ?? $check->id ?? 0;
+    })->keyBy('server_id');
+
     $totalServers = $totalServers ?? $servers->count();
     $onlineServers = $onlineServers ?? $servers->where('status', 'online')->count();
     $offlineServers = $offlineServers ?? $servers->where('status', 'offline')->count();
@@ -108,6 +115,75 @@
 
         return $clean === '' ? 0 : (float) $clean;
     };
+
+    $objectValue = function ($object, array $keys) {
+        if (!$object) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            if (is_array($object) && array_key_exists($key, $object) && $object[$key] !== null && $object[$key] !== '') {
+                return $object[$key];
+            }
+
+            if (is_object($object) && isset($object->{$key}) && $object->{$key} !== null && $object->{$key} !== '') {
+                return $object->{$key};
+            }
+        }
+
+        return null;
+    };
+
+    $serverMetric = function ($server, array $serverKeys, array $checkKeys = []) use ($metricNumber, $objectValue, $latestChecksByServer) {
+        $checkKeys = $checkKeys ?: $serverKeys;
+
+        $serverValue = $objectValue($server, $serverKeys);
+        if ($serverValue !== null) {
+            return $metricNumber($serverValue);
+        }
+
+        $latestCheck = $server->latest_check ?? $server->latestCheck ?? null;
+
+        if (!$latestCheck && !empty($server->id)) {
+            $latestCheck = $latestChecksByServer->get($server->id);
+        }
+
+        $checkValue = $objectValue($latestCheck, $checkKeys);
+        if ($checkValue !== null) {
+            return $metricNumber($checkValue);
+        }
+
+        return 0;
+    };
+
+    $serverLatestCheck = function ($server) use ($latestChecksByServer) {
+        if (!empty($server->latest_check)) {
+            return $server->latest_check;
+        }
+
+        if (!empty($server->latestCheck)) {
+            return $server->latestCheck;
+        }
+
+        if (!empty($server->id)) {
+            return $latestChecksByServer->get($server->id);
+        }
+
+        return null;
+    };
+
+    // Recalculate averages from live rows when controller sends empty/zero values.
+    $calculatedCpuValues = collect($servers)->map(fn ($server) => $serverMetric($server, ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average'], ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average']))->filter(fn ($value) => $value > 0);
+    $calculatedRamValues = collect($servers)->map(fn ($server) => $serverMetric($server, ['ram_usage', 'ram', 'memory_usage', 'memory_percent'], ['ram_usage', 'ram', 'memory_usage', 'memory_percent']))->filter(fn ($value) => $value > 0);
+    $calculatedDiskValues = collect($servers)->map(fn ($server) => $serverMetric($server, ['disk_usage', 'disk', 'disk_percent', 'storage_usage'], ['disk_usage', 'disk', 'disk_percent', 'storage_usage']))->filter(fn ($value) => $value > 0);
+
+    $avgCpu = ($avgCpu ?? 0) > 0 ? $avgCpu : round($calculatedCpuValues->avg() ?? 0, 2);
+    $avgRam = ($avgRam ?? 0) > 0 ? $avgRam : round($calculatedRamValues->avg() ?? 0, 2);
+    $avgDisk = ($avgDisk ?? 0) > 0 ? $avgDisk : round($calculatedDiskValues->avg() ?? 0, 2);
+
+    $criticalDiskServers = ($criticalDiskServers ?? 0) > 0 ? $criticalDiskServers : collect($servers)->filter(fn ($server) => $serverMetric($server, ['disk_usage', 'disk', 'disk_percent', 'storage_usage']) >= 90)->count();
+    $highCpuServers = ($highCpuServers ?? 0) > 0 ? $highCpuServers : collect($servers)->filter(fn ($server) => $serverMetric($server, ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average']) >= 85)->count();
+    $highRamServers = ($highRamServers ?? 0) > 0 ? $highRamServers : collect($servers)->filter(fn ($server) => $serverMetric($server, ['ram_usage', 'ram', 'memory_usage', 'memory_percent']) >= 85)->count();
 @endphp
 
 <div class="space-y-6">
@@ -720,9 +796,12 @@
                 <tbody>
                     @forelse($servers as $server)
                         @php
-                            $cpu = $metricNumber($server->cpu_usage ?? $server->cpu ?? 0);
-                            $ram = $metricNumber($server->ram_usage ?? $server->ram ?? 0);
-                            $disk = $metricNumber($server->disk_usage ?? $server->disk ?? 0);
+                            $latestCheck = $serverLatestCheck($server);
+
+                            $cpu = $serverMetric($server, ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average'], ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average']);
+                            $ram = $serverMetric($server, ['ram_usage', 'ram', 'memory_usage', 'memory_percent'], ['ram_usage', 'ram', 'memory_usage', 'memory_percent']);
+                            $disk = $serverMetric($server, ['disk_usage', 'disk', 'disk_percent', 'storage_usage'], ['disk_usage', 'disk', 'disk_percent', 'storage_usage']);
+                            $responseTime = $serverMetric($server, ['response_time', 'latency', 'speed'], ['response_time', 'latency', 'speed']);
 
                             $serverScore = 0;
                             $serverScore += !empty($server->password) ? 20 : 0;
@@ -739,7 +818,7 @@
                                 default => ['Risk', 'bg-red-100 text-red-700 border-red-200'],
                             };
 
-                            $serverStatus = strtolower((string) ($server->status ?? 'offline'));
+                            $serverStatus = strtolower((string) (($latestCheck->status ?? null) ?: ($server->status ?? 'offline')));
                         @endphp
 
                         <tr class="server-row border-t hover:bg-slate-50 transition"
@@ -748,20 +827,24 @@
                             <td class="p-4">
                                 <div class="font-black text-slate-900">{{ $server->name }}</div>
                                 <div class="text-xs text-slate-500 mt-1">
-                                    {{ $server->username ?? 'root' }}@{{ $server->host }}:{{ $server->ssh_port ?? 22 }}
+                                    {{ ($server->username ?: 'root') . '@' . ($server->host ?: '-') . ':' . ($server->ssh_port ?: 22) }}
                                 </div>
                             </td>
 
                             <td class="p-4">
                                 <div class="font-bold text-slate-700">{{ $server->host }}</div>
                                 <div class="text-xs text-slate-500 mt-1 break-all">
-                                    {{ $server->website_url ?? $server->linked_domain ?? 'No website linked' }}
+                                    {{ $server->website_url ?? $server->linked_domain ?? $server->domain ?? $server->url ?? 'No website linked' }}
+                                </div>
+
+                                <div class="text-xs text-slate-400 mt-1">
+                                    Response: {{ $responseTime > 0 ? round($responseTime, 2) . ' ms' : 'N/A' }}
                                 </div>
                             </td>
 
                             <td class="p-4">
-                                <span class="px-3 py-1 rounded-full border {{ $statusBadge($server->status ?? 'offline') }} text-xs font-black uppercase">
-                                    {{ $server->status ?? 'offline' }}
+                                <span class="px-3 py-1 rounded-full border {{ $statusBadge($serverStatus ?: 'offline') }} text-xs font-black uppercase">
+                                    {{ ucfirst($serverStatus ?: 'offline') }}
                                 </span>
 
                                 <div class="mt-2 text-xs">
@@ -931,7 +1014,7 @@
                             </td>
 
                             <td class="p-4">
-                                {{ $check->response_time ? round($check->response_time, 2) . ' ms' : 'N/A' }}
+                                {{ ($check->response_time ?? $check->latency ?? $check->speed ?? null) ? round(($check->response_time ?? $check->latency ?? $check->speed), 2) . ' ms' : 'N/A' }}
                             </td>
 
                             <td class="p-4 text-slate-600">

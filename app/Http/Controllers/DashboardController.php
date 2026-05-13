@@ -18,6 +18,78 @@ class DashboardController extends Controller
         */
         $servers = Server::latest()->get();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Latest check for each server
+        |--------------------------------------------------------------------------
+        */
+        $latestChecksByServer = collect();
+
+        if (class_exists(ServerCheck::class) && Schema::hasTable('server_checks')) {
+            $latestChecksByServer = ServerCheck::query()
+                ->select('server_checks.*')
+                ->join(DB::raw('(SELECT server_id, MAX(id) as latest_id FROM server_checks GROUP BY server_id) latest_checks'), function ($join) {
+                    $join->on('server_checks.id', '=', 'latest_checks.latest_id');
+                })
+                ->get()
+                ->keyBy('server_id');
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Attach latest check data to server collection
+        |--------------------------------------------------------------------------
+        */
+        $servers = $servers->map(function ($server) use ($latestChecksByServer) {
+            $latestCheck = $latestChecksByServer->get($server->id);
+
+            $server->latest_check = $latestCheck;
+
+            $server->cpu_usage = $this->firstMetricValue([
+                $latestCheck->cpu_usage ?? null,
+                $latestCheck->cpu ?? null,
+                $latestCheck->cpu_percent ?? null,
+                $latestCheck->cpu_average ?? null,
+                $server->cpu_usage ?? null,
+                $server->cpu ?? null,
+            ]);
+
+            $server->ram_usage = $this->firstMetricValue([
+                $latestCheck->ram_usage ?? null,
+                $latestCheck->ram ?? null,
+                $latestCheck->memory_usage ?? null,
+                $latestCheck->memory_percent ?? null,
+                $server->ram_usage ?? null,
+                $server->ram ?? null,
+            ]);
+
+            $server->disk_usage = $this->firstMetricValue([
+                $latestCheck->disk_usage ?? null,
+                $latestCheck->disk ?? null,
+                $latestCheck->disk_percent ?? null,
+                $latestCheck->storage_usage ?? null,
+                $server->disk_usage ?? null,
+                $server->disk ?? null,
+            ]);
+
+            $server->response_time = $this->firstMetricValue([
+                $latestCheck->response_time ?? null,
+                $latestCheck->speed ?? null,
+                $latestCheck->latency ?? null,
+                $server->response_time ?? null,
+            ]);
+
+            if ($latestCheck && isset($latestCheck->status) && !empty($latestCheck->status)) {
+                $server->status = $latestCheck->status;
+            }
+
+            if ($latestCheck && isset($latestCheck->created_at)) {
+                $server->last_checked_at = $latestCheck->created_at;
+            }
+
+            return $server;
+        });
+
         $totalServers = $servers->count();
 
         $onlineServers = $servers->filter(function ($server) {
@@ -76,6 +148,8 @@ class DashboardController extends Controller
                 ->with('server')
                 ->limit(5)
                 ->get();
+        } else {
+            $avgResponseTime = $servers->whereNotNull('response_time')->avg('response_time');
         }
 
         /*
@@ -83,24 +157,24 @@ class DashboardController extends Controller
         | Resource averages
         |--------------------------------------------------------------------------
         */
-        $avgCpu = $this->averageServerMetric($servers, ['cpu_usage', 'cpu']);
-        $avgRam = $this->averageServerMetric($servers, ['ram_usage', 'ram']);
-        $avgDisk = $this->averageServerMetric($servers, ['disk_usage', 'disk']);
+        $avgCpu = $this->averageServerMetric($servers, ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average']);
+        $avgRam = $this->averageServerMetric($servers, ['ram_usage', 'ram', 'memory_usage', 'memory_percent']);
+        $avgDisk = $this->averageServerMetric($servers, ['disk_usage', 'disk', 'disk_percent', 'storage_usage']);
 
         $criticalDiskServers = $servers->filter(function ($server) {
-            $disk = $this->metricValue($server, ['disk_usage', 'disk']);
+            $disk = $this->metricValue($server, ['disk_usage', 'disk', 'disk_percent', 'storage_usage']);
 
             return $disk !== null && $disk >= 90;
         })->count();
 
         $highCpuServers = $servers->filter(function ($server) {
-            $cpu = $this->metricValue($server, ['cpu_usage', 'cpu']);
+            $cpu = $this->metricValue($server, ['cpu_usage', 'cpu', 'cpu_percent', 'cpu_average']);
 
             return $cpu !== null && $cpu >= 85;
         })->count();
 
         $highRamServers = $servers->filter(function ($server) {
-            $ram = $this->metricValue($server, ['ram_usage', 'ram']);
+            $ram = $this->metricValue($server, ['ram_usage', 'ram', 'memory_usage', 'memory_percent']);
 
             return $ram !== null && $ram >= 85;
         })->count();
@@ -130,14 +204,35 @@ class DashboardController extends Controller
 
         if (Schema::hasTable('server_domains')) {
             $sentinelStats['linked_domains'] = DB::table('server_domains')->count();
+        } else {
+            $sentinelStats['linked_domains'] = $servers->filter(function ($server) {
+                return !empty($server->website_url)
+                    || !empty($server->domain)
+                    || !empty($server->linked_domain)
+                    || !empty($server->url);
+            })->count();
         }
 
         if (Schema::hasTable('sentinel_web_scans')) {
             $sentinelStats['web_scans'] = DB::table('sentinel_web_scans')->count();
-            $sentinelStats['critical_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'critical')->count();
-            $sentinelStats['high_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'high')->count();
-            $sentinelStats['medium_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'medium')->count();
-            $sentinelStats['low_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'low')->count();
+
+            if (Schema::hasColumn('sentinel_web_scans', 'risk_level')) {
+                $sentinelStats['critical_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'critical')->count();
+                $sentinelStats['high_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'high')->count();
+                $sentinelStats['medium_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'medium')->count();
+                $sentinelStats['low_web_scans'] = DB::table('sentinel_web_scans')->where('risk_level', 'low')->count();
+            }
+        }
+
+        if (Schema::hasTable('web_scans')) {
+            $sentinelStats['web_scans'] = max($sentinelStats['web_scans'], DB::table('web_scans')->count());
+
+            if (Schema::hasColumn('web_scans', 'risk_level')) {
+                $sentinelStats['critical_web_scans'] += DB::table('web_scans')->where('risk_level', 'critical')->count();
+                $sentinelStats['high_web_scans'] += DB::table('web_scans')->where('risk_level', 'high')->count();
+                $sentinelStats['medium_web_scans'] += DB::table('web_scans')->where('risk_level', 'medium')->count();
+                $sentinelStats['low_web_scans'] += DB::table('web_scans')->where('risk_level', 'low')->count();
+            }
         }
 
         if (Schema::hasTable('server_security_alerts')) {
@@ -149,6 +244,23 @@ class DashboardController extends Controller
                     ->count();
 
                 $sentinelStats['warning_alerts'] = DB::table('server_security_alerts')
+                    ->where('level', 'warning')
+                    ->count();
+            }
+        }
+
+        if (Schema::hasTable('security_alerts')) {
+            $sentinelStats['security_alerts'] = max(
+                $sentinelStats['security_alerts'],
+                DB::table('security_alerts')->count()
+            );
+
+            if (Schema::hasColumn('security_alerts', 'level')) {
+                $sentinelStats['danger_alerts'] += DB::table('security_alerts')
+                    ->where('level', 'danger')
+                    ->count();
+
+                $sentinelStats['warning_alerts'] += DB::table('security_alerts')
                     ->where('level', 'warning')
                     ->count();
             }
@@ -192,6 +304,11 @@ class DashboardController extends Controller
                 ->latest()
                 ->limit(5)
                 ->get();
+        } elseif (Schema::hasTable('web_scans')) {
+            $latestWebScans = DB::table('web_scans')
+                ->latest()
+                ->limit(5)
+                ->get();
         }
 
         /*
@@ -203,6 +320,11 @@ class DashboardController extends Controller
 
         if (Schema::hasTable('server_security_alerts')) {
             $latestSecurityAlerts = DB::table('server_security_alerts')
+                ->latest()
+                ->limit(8)
+                ->get();
+        } elseif (Schema::hasTable('security_alerts')) {
+            $latestSecurityAlerts = DB::table('security_alerts')
                 ->latest()
                 ->limit(8)
                 ->get();
@@ -425,7 +547,35 @@ class DashboardController extends Controller
             }
         }
 
+        $latestCheck = $server->latest_check ?? null;
+
+        if ($latestCheck) {
+            foreach ($columns as $column) {
+                if (isset($latestCheck->{$column}) && $latestCheck->{$column} !== null && $latestCheck->{$column} !== '') {
+                    return $this->toNumber($latestCheck->{$column});
+                }
+            }
+        }
+
         return null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helper: Get first valid metric
+    |--------------------------------------------------------------------------
+    */
+    private function firstMetricValue(array $values): float
+    {
+        foreach ($values as $value) {
+            $number = $this->toNumber($value);
+
+            if ($number !== null) {
+                return $number;
+            }
+        }
+
+        return 0;
     }
 
     /*
